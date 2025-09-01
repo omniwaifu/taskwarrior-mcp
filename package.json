@@ -1,15 +1,14 @@
 {
-  "name": "mcp-server-taskwarrior",
+  "name": "taskwarrior-mcp",
   "version": "1.0.1",
   "description": "MCP server for taskwarrior",
   "license": "MIT",
-  "author": "Brock Wilcox",
-  "homepage": "https://github.com/awwaiid/mcp-server-taskwarrior",
-  "bugs": "https://github.com/awwaiid/mcp-server-taskwarrior/issues",
+  "homepage": "https://github.com/omniwaifu/taskwarrior-mcp",
+  "bugs": "https://github.com/omniwaifu/taskwarrior-mcp/issues",
   "type": "module",
   "main": "dist/index.js",
   "bin": {
-    "mcp-server-taskwarrior": "dist/index.js"
+    "taskwarrior-mcp": "dist/index.js"
   },
   "files": [
     "dist"
