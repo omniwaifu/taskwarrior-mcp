@@ -1,93 +1,125 @@
 # TaskWarrior MCP Server
 
-This is a Model Context Protocol (MCP) server for TaskWarrior that allows AI agents and applications to interact with TaskWarrior directly.
+MCP server that wraps TaskWarrior command-line tool. Provides 22 tools for task management, GTD workflow, and habit tracking.
 
-## Overview
+## Tools
 
-The MCP TaskWarrior server exposes TaskWarrior's functionality through a set of standardized tools that follow the MCP protocol. This allows AI agents to manage tasks, add annotations, mark tasks as complete, and perform other operations.
+### Basic Task Operations
+- `add_task` - Create task. Supports GTD fields (context, energy, scheduled, wait, depends) and recurring tasks (recur)
+- `modify_task` - Update task attributes
+- `mark_task_done` - Complete task by UUID
+- `delete_task` - Delete task by UUID
+- `list_tasks` - Query tasks with filters (status, project, tags, dates)
+- `get_task_details` - Get single task by UUID
+- `start_task` - Start timer on task
+- `stop_task` - Stop timer on task
+- `add_annotation` - Add note to task
+- `remove_annotation` - Remove note from task
 
-## Available Tools
+### Dependencies
+- `add_dependency` - Make task A depend on task B
+- `remove_dependency` - Remove dependency link
 
-The server provides the following tools:
+### GTD Workflow
+- `get_next_actions` - Filter actionable tasks by context, energy level, time available
+- `process_inbox` - Get tasks tagged +inbox for processing
+- `get_waiting_for` - Get delegated/waiting tasks, grouped by blocker/date/project
+- `get_blocked_tasks` - Get tasks with unmet dependencies
+- `get_project_status` - Project metrics: next actions, completion %, staleness
+- `weekly_review` - GTD review data: inbox, completed, stalled projects, habits
+- `get_someday_maybe` - Get tasks tagged +someday
 
-- `get_next_tasks` - Get a list of all pending tasks based on TaskWarrior's 'next' algorithm
-- `mark_task_done` - Mark a task as done (completed) using its UUID
-- `add_task` - Add a new task with a description and optional properties
-- `list_tasks` - Get a list of tasks as JSON objects based on flexible filters
-- `get_task_details` - Get detailed information for a specific task by its UUID
-- `modify_task` - Modify attributes of an existing task
-- `start_task` - Mark a task as started by its UUID
-- `stop_task` - Stop a task that is currently active
-- `delete_task` - Delete a task by its UUID
-- `add_annotation` - Add an annotation to an existing task
-- `remove_annotation` - Remove an existing annotation from a task
+### Batch Operations
+- `create_project_tree` - Create project with multiple tasks and dependencies in one call
+- `batch_modify_tasks` - Apply same modifications to multiple tasks
 
-## Response Format
+### Habits/Recurring Tasks
+- `get_recurring_tasks` - Get recurring tasks with completion stats, streaks, frequency
 
-The server now follows the standard MCP response format:
+## Requirements
 
-```typescript
-// Success response format
-{
-  content: [
-    {
-      type: "text",
-      text: JSON.stringify(data)
-    }
-  ]
-}
+- Node.js 18+
+- TaskWarrior installed (`task` command available)
 
-// Error response format
-{
-  content: [
-    {
-      type: "text",
-      text: JSON.stringify({ error: "Error message" })
-    }
-  ]
-}
+## Install
+
+```bash
+npm install
+npm run build
 ```
 
-## Migration Guide for Existing Tools
+## Run
 
-If you have client code that interacts with the TaskWarrior MCP server, you'll need to make these changes:
+```bash
+npm start
+```
 
-1. **Update tool names** - Tool names now use snake_case format (e.g., `list_tasks` instead of `listTasks`)
+Or configure in your MCP client settings:
 
-2. **Update response parsing** - Responses are now returned in the standard MCP format with a `content` array containing text items. The actual data is JSON stringified in the `text` field.
-
-3. **Example client code**:
-```typescript
-// When calling a tool:
-const response = await client.callTool({
-  name: "list_tasks", // Use snake_case
-  arguments: args,
-});
-
-// When parsing responses:
-if (response?.content && Array.isArray(response.content)) {
-  for (const item of response.content) {
-    if (item?.type === 'text' && item?.text) {
-      try {
-        // Parse the JSON string in the text field
-        const data = JSON.parse(item.text);
-        // Use the data...
-      } catch (e) {
-        // Handle parsing error
-      }
+```json
+{
+  "mcpServers": {
+    "taskwarrior": {
+      "command": "node",
+      "args": ["/path/to/taskwarrior-mcp/dist/index.js"]
     }
   }
 }
 ```
 
-## Installation & Usage
+## Response Format
 
-1. Clone this repository
-2. Install dependencies with `npm install`
-3. Build with `npm run build`
-4. Run with `npm start`
+All tools return MCP standard format:
 
-## Requirements
+```json
+{
+  "content": [
+    {
+      "type": "text",
+      "text": "{\"tasks\": [...], \"metadata\": {...}, \"insights\": {...}}"
+    }
+  ]
+}
+```
 
-- Node.js 18 or higher
-- TaskWarrior installed and configured on the system
+GTD tools return enriched responses with:
+- `tasks` - Array of task objects
+- `metadata` - Counts (total, actionable, blocked, waiting, completed)
+- `insights` - Summary, recommendations, warnings
+- `groups` - Tasks grouped by project/context/frequency
+- `relationships` - Dependency chains (where applicable)
+
+## GTD Features
+
+### Task Fields
+- `scheduled` - Date to start work
+- `wait` - Hide until date (deferred)
+- `until` - Task expires after date
+- `context` - GTD context (@home, @work, @phone)
+- `energy` - Energy level required (H/M/L)
+- `depends` - Array of task UUIDs this depends on
+- `parent` - Parent task UUID
+- `recur` - Recurrence pattern (daily, weekly, monthly, etc.)
+
+### Recurring Tasks
+Set `recur` with `due` to create habits:
+```json
+{
+  "description": "Take vitamins",
+  "recur": "daily",
+  "due": "today",
+  "context": "@morning"
+}
+```
+
+TaskWarrior creates template task (status:recurring) that generates instances. Use `get_recurring_tasks` to see completion rates and streaks.
+
+## Development
+
+```bash
+npm run typecheck  # Type check
+npm run lint       # Lint code
+npm run build      # Build dist/
+```
+
+Build output: ~92kb
