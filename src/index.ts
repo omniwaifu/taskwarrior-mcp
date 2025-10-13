@@ -410,6 +410,21 @@ const server = new Server(
 // type ToolInput = z.infer<typeof ToolInputSchema>; // Unused type
 
 server.setRequestHandler(ListToolsRequestSchema, async () => {
+  // Tool categories:
+  // [Raw Query] - Returns unprocessed task data
+  // [GTD Decision] - Returns enriched analysis with actionable insights
+  // [GTD Review] - Returns curated review data for GTD workflows
+  // [Bulk Operation] - Modifies multiple tasks/creates complex structures
+  // [Habit Tracking] - Analyzes recurring tasks and completion patterns
+  //
+  // Common usage patterns:
+  // "What should I work on?" → get_next_actions
+  // "Show all tasks" → list_tasks
+  // "What's stuck?" → get_blocked_tasks (internal deps) / get_waiting_for (external)
+  // "How's project X?" → get_project_status
+  // "Weekly review time" → weekly_review
+  // "Process inbox" → process_inbox
+
   return {
     tools: [
       {
@@ -426,13 +441,13 @@ server.setRequestHandler(ListToolsRequestSchema, async () => {
       {
         name: "list_tasks",
         description:
-          "Get a list of tasks as JSON objects based on flexible filters (status, project, tags, dates, limit, etc.).",
+          "[Raw Query] Get a list of tasks as JSON objects based on flexible filters (status, project, tags, dates, limit, etc.). Returns raw task array without analysis. For actionable recommendations with insights and context groupings, use get_next_actions instead.",
         inputSchema: listTasksJsonSchema,
       },
       {
         name: "get_task_details",
         description:
-          "Get detailed information for a specific task by its UUID.",
+          "[Raw Query] Get detailed information for a specific task by its UUID.",
         inputSchema: getTaskDetailsJsonSchema,
       },
       {
@@ -485,61 +500,61 @@ server.setRequestHandler(ListToolsRequestSchema, async () => {
       {
         name: "get_next_actions",
         description:
-          "Get actionable next actions - answers 'What can I do NOW?'. Returns enriched response with tasks, metadata, insights, and context groupings. Supports filtering by context, energy level, time available.",
+          "[GTD Decision] Get actionable next actions - answers 'What should I do NOW?'. Returns enriched analysis (not just filtered tasks) with actionability insights, AI recommendations, context groupings, and metadata. Supports filtering by context, energy level, time available. Don't use list_tasks for decision-making - this tool is designed for that.",
         inputSchema: getNextActionsJsonSchema,
       },
       {
         name: "process_inbox",
         description:
-          "Get all tasks tagged with +inbox that need clarification and processing. Returns enriched response to guide GTD clarify step.",
+          "[GTD Review] Get all tasks tagged with +inbox for GTD clarify/process workflow. Returns enriched response (not just a filtered list) with clarification prompts, decision structure, and processing guidance. Don't use list_tasks(tags=['inbox']) for inbox processing - this tool provides the GTD workflow structure.",
         inputSchema: {},
       },
       {
         name: "get_waiting_for",
         description:
-          "Get tasks you're waiting on (status:waiting or wait date set). Group by blocker, date, or project. Essential for GTD weekly review.",
+          "[GTD Review] Get tasks waiting on EXTERNAL factors (people, events, responses). Filters by status:waiting or wait date. Group by blocker (person/factor), date (wait date), or project. Essential for GTD weekly review. For tasks blocked by OTHER TASKS (internal dependencies), use get_blocked_tasks instead.",
         inputSchema: getWaitingForJsonSchema,
       },
       {
         name: "get_blocked_tasks",
         description:
-          "Get tasks blocked by unmet dependencies. Shows what's stuck and why. Includes dependency chain analysis.",
+          "[GTD Review] Get tasks blocked by OTHER TASKS in the system (unmet internal dependencies). Shows what's stuck and why with dependency chain analysis. Set include_waiting=true to also include tasks waiting on external factors. For ONLY external blockers (people/events), use get_waiting_for instead.",
         inputSchema: getBlockedTasksJsonSchema,
       },
       {
         name: "get_project_status",
         description:
-          "Get health check for a specific project: next actions, blocked tasks, completion %, staleness. Essential for project reviews.",
+          "[GTD Decision] Get project health analysis (not just task list) for a specific project. Returns enriched metrics: next actions, blocked tasks, completion %, staleness warnings, and recommendations. Essential for project reviews. Use list_tasks(project=X) for raw project task list only.",
         inputSchema: getProjectStatusJsonSchema,
       },
       {
         name: "weekly_review",
         description:
-          "Generate comprehensive GTD weekly review data: inbox count, completed tasks, stalled projects, projects without next actions, waiting items, overdue tasks, habit completion statistics, and broken streaks.",
+          "[GTD Review] Generate comprehensive GTD weekly review - a curated aggregation in ONE call. Includes: inbox count, completed tasks, stalled projects, projects without next actions, waiting items, overdue tasks, habit completion stats, and broken streaks. Don't query categories manually - this tool aggregates everything for the weekly review ritual.",
         inputSchema: {},
       },
       {
         name: "create_project_tree",
         description:
-          "Create a complete project with multiple tasks and dependencies in one operation. Automatically creates project root task and all subtasks with dependency chains.",
+          "[Bulk Operation] Create a complete project with multiple tasks and dependencies in one operation. Automatically creates project root task and all subtasks with dependency chains.",
         inputSchema: createProjectTreeJsonSchema,
       },
       {
         name: "batch_modify_tasks",
         description:
-          "Modify multiple tasks at once with the same set of modifications. Efficient for bulk operations like rescheduling, retagging, or changing priorities.",
+          "[Bulk Operation] Modify multiple tasks at once with the same set of modifications. Efficient for bulk operations like rescheduling, retagging, or changing priorities.",
         inputSchema: batchModifyTasksJsonSchema,
       },
       {
         name: "get_someday_maybe",
         description:
-          "Get all tasks tagged with +someday for GTD someday/maybe list review. Shows aspirational tasks that aren't currently active.",
+          "[GTD Review] Get all tasks tagged with +someday for GTD someday/maybe list review. Shows aspirational tasks that aren't currently active.",
         inputSchema: getSomedayMaybeJsonSchema,
       },
       {
         name: "get_recurring_tasks",
         description:
-          "Get all recurring tasks/habits with completion statistics, streaks, and frequency grouping. Essential for habit tracking and routine management. Shows template tasks (status:recurring) with mask analysis for completion rates.",
+          "[Habit Tracking] Get all recurring tasks/habits with completion statistics, streaks, and frequency grouping. Essential for habit tracking and routine management. Shows template tasks (status:recurring) with mask analysis for completion rates.",
         inputSchema: getRecurringTasksJsonSchema,
       },
     ],
