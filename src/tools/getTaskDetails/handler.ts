@@ -1,7 +1,6 @@
 import type {
   GetTaskDetailsRequest,
   TaskWarriorTask,
-  ErrorResponse,
 } from "../../types/task.js";
 import { getTaskByUuid } from "../../utils/taskwarrior.js";
 

@@ -1,7 +1,5 @@
 import type {
   RemoveAnnotationRequest,
-  TaskWarriorTask,
-  ErrorResponse,
 } from "../../types/task.js";
 import {
   executeTaskWarriorCommandRaw,

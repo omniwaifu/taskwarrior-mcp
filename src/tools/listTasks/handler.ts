@@ -1,7 +1,6 @@
 import type {
   ListTasksRequest,
   TaskWarriorTask,
-  ErrorResponse,
 } from "../../types/task.js";
 import { executeTaskWarriorCommandJson } from "../../utils/taskwarrior.js";
 

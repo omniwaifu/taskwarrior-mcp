@@ -21,12 +21,27 @@ export async function handleAddTask(
   // Ensure description is quoted and internal quotes escaped for the shell command
   commandArgs.push(`'${args.description.replace(/'/g, "'\\''")}'`);
 
+  // Basic fields
   if (args.due) commandArgs.push(`due:${args.due}`);
   if (args.priority) commandArgs.push(`priority:${args.priority}`);
   if (args.project) commandArgs.push(`project:${args.project}`);
   if (args.tags && args.tags.length > 0) {
     args.tags.forEach((tag) => commandArgs.push(`+${tag}`));
   }
+
+  // GTD fields
+  if (args.scheduled) commandArgs.push(`scheduled:${args.scheduled}`);
+  if (args.wait) commandArgs.push(`wait:${args.wait}`);
+  if (args.until) commandArgs.push(`until:${args.until}`);
+  if (args.context) commandArgs.push(`context:${args.context}`);
+  if (args.energy) commandArgs.push(`energy:${args.energy}`);
+  if (args.depends && args.depends.length > 0) {
+    commandArgs.push(`depends:${args.depends.join(",")}`);
+  }
+  if (args.parent) commandArgs.push(`parent:${args.parent}`);
+
+  // Recurring/Habit fields
+  if (args.recur) commandArgs.push(`recur:${args.recur}`);
 
   try {
     const addOutput = executeTaskWarriorCommandRaw(commandArgs);
@@ -69,6 +84,15 @@ export async function handleAddTask(
         createdTaskUuid = newTasks[0].uuid;
       } else {
         throw new Error("Failed to determine UUID of the newly created task. Task might have been added, but its UUID could not be retrieved.");
+      }
+    }
+
+    // Add annotations if provided
+    if (args.annotations && args.annotations.length > 0) {
+      for (const annotation of args.annotations) {
+        const escapedAnnotation = annotation.replace(/'/g, "'\\''");
+        const annotateArgs = [createdTaskUuid, "annotate", `'${escapedAnnotation}'`];
+        executeTaskWarriorCommandRaw(annotateArgs);
       }
     }
 

@@ -1,7 +1,5 @@
 import type {
   StartTaskRequest,
-  TaskWarriorTask,
-  ErrorResponse,
 } from "../../types/task.js";
 import {
   executeTaskWarriorCommandRaw,

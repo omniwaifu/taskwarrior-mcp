@@ -1,7 +1,6 @@
 import type {
   DeleteTaskRequest,
   DeleteTaskResponse,
-  ErrorResponse,
 } from "../../types/task.js";
 import {
   executeTaskWarriorCommandRaw,

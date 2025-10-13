@@ -1,7 +1,5 @@
 import type {
   MarkTaskDoneRequest,
-  TaskWarriorTask,
-  ErrorResponse,
 } from "../../types/task.js";
 import {
   executeTaskWarriorCommandRaw,

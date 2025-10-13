@@ -1,7 +1,5 @@
 import type {
   ModifyTaskRequest,
-  TaskWarriorTask,
-  ErrorResponse,
 } from "../../types/task.js";
 import {
   executeTaskWarriorCommandRaw,
@@ -87,6 +85,51 @@ export const modifyTaskHandler = async (
     }
     if (modifications.removeTags && modifications.removeTags.length > 0) {
       modifications.removeTags.forEach((tag) => commandArgs.push(`-${tag}`));
+    }
+
+    // GTD fields
+    if (modifications.scheduled) {
+      commandArgs.push(`scheduled:${modifications.scheduled}`);
+    }
+    if (modifications.wait) {
+      commandArgs.push(`wait:${modifications.wait}`);
+    }
+    if (modifications.until) {
+      commandArgs.push(`until:${modifications.until}`);
+    }
+    if (modifications.context) {
+      commandArgs.push(`context:${modifications.context}`);
+    }
+    if (modifications.energy) {
+      commandArgs.push(`energy:${modifications.energy}`);
+    }
+    if (modifications.parent) {
+      commandArgs.push(`parent:${modifications.parent}`);
+    }
+
+    // Recurring/Habit fields
+    if (modifications.recur) {
+      commandArgs.push(`recur:${modifications.recur}`);
+    }
+
+    // Handle dependencies
+    if (modifications.addDepends && modifications.addDepends.length > 0) {
+      // Get current dependencies and add new ones
+      const currentDepends = existingTask.depends || [];
+      const allDepends = [...currentDepends, ...modifications.addDepends];
+      commandArgs.push(`depends:${allDepends.join(",")}`);
+    }
+    if (modifications.removeDepends && modifications.removeDepends.length > 0) {
+      // Get current dependencies and remove specified ones
+      const currentDepends = existingTask.depends || [];
+      const newDepends = currentDepends.filter(
+        (dep) => !modifications.removeDepends?.includes(dep)
+      );
+      if (newDepends.length > 0) {
+        commandArgs.push(`depends:${newDepends.join(",")}`);
+      } else {
+        commandArgs.push(`depends:`); // Clear all dependencies
+      }
     }
 
     if (commandArgs.length === 2) {
