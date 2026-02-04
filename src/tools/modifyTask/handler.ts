@@ -80,11 +80,22 @@ export const modifyTaskHandler = async (
     if (modifications.project !== undefined) {
       commandArgs.push(`project:${modifications.project}`);
     }
-    if (modifications.addTags && modifications.addTags.length > 0) {
-      modifications.addTags.forEach((tag) => commandArgs.push(`+${tag}`));
-    }
-    if (modifications.removeTags && modifications.removeTags.length > 0) {
-      modifications.removeTags.forEach((tag) => commandArgs.push(`-${tag}`));
+    // Handle tag modifications using explicit tags: syntax
+    // This avoids the bug where +tag/-tag syntax corrupts descriptions with UUID-based filters
+    if ((modifications.addTags && modifications.addTags.length > 0) ||
+        (modifications.removeTags && modifications.removeTags.length > 0)) {
+      const existingTags = existingTask.tags || [];
+      const tagsToAdd = modifications.addTags || [];
+      const tagsToRemove = new Set(modifications.removeTags || []);
+
+      // Start with existing tags, filter out ones to remove, then add new ones
+      const finalTags = [
+        ...existingTags.filter(tag => !tagsToRemove.has(tag)),
+        ...tagsToAdd.filter(tag => !existingTags.includes(tag)), // Avoid duplicates
+      ];
+
+      // Use tags: syntax which works correctly with UUID-based task identification
+      commandArgs.push(`tags:${finalTags.join(',')}`);
     }
 
     // GTD fields
