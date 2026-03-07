@@ -2,7 +2,7 @@
   "manifest_version": "0.3",
   "name": "taskwarrior-mcp",
   "display_name": "TaskWarrior MCP",
-  "version": "1.0.1",
+  "version": "1.0.2",
   "description": "Local TaskWarrior MCP server for task management, GTD workflows, and recurring task tracking.",
   "long_description": "TaskWarrior MCP exposes a local TaskWarrior installation to Claude Desktop. It supports task creation, modification, GTD review workflows, annotations, dependencies, batch operations, and recurring task reporting.\n\nPrerequisite: TaskWarrior must already be installed on the host machine and the `task` binary must be available on PATH, unless you override it in the bundle settings.",
   "author": {

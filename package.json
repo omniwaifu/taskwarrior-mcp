@@ -1,6 +1,6 @@
 {
   "name": "taskwarrior-mcp",
-  "version": "1.0.1",
+  "version": "1.0.2",
   "description": "MCP server for taskwarrior",
   "license": "MIT",
   "homepage": "https://github.com/omniwaifu/taskwarrior-mcp",
