@@ -5,6 +5,7 @@
   "license": "MIT",
   "homepage": "https://github.com/omniwaifu/taskwarrior-mcp",
   "bugs": "https://github.com/omniwaifu/taskwarrior-mcp/issues",
+  "packageManager": "bun@1.3.5",
   "type": "module",
   "main": "dist/index.js",
   "bin": {
@@ -14,21 +15,31 @@
     "dist"
   ],
   "scripts": {
-    "build": "esbuild src/index.ts --bundle --outfile=dist/index.js --platform=node --format=esm --external:@modelcontextprotocol/sdk --external:zod --external:zod-to-json-schema --external:diff --external:glob --external:minimatch && shx chmod +x dist/*.js",
-    "typecheck": "NODE_OPTIONS=--max-old-space-size=8192 tsc --noEmit",
-    "prepare": "npm run build && npm run typecheck",
-    "watch": "esbuild src/index.ts --bundle --outfile=dist/index.js --platform=node --format=esm --external:@modelcontextprotocol/sdk --external:zod --external:zod-to-json-schema --external:diff --external:glob --external:minimatch --watch",
+    "build": "esbuild src/index.ts --bundle --outfile=dist/index.js --platform=node --format=esm && shx chmod +x dist/*.js",
+    "typecheck": "tsc --noEmit",
+    "prepare": "bun run build && bun run typecheck",
+    "start": "node dist/index.js",
+    "dev": "esbuild src/index.ts --bundle --outfile=dist/index.js --platform=node --format=esm --watch",
+    "watch": "bun run dev",
     "lint": "eslint . --ext .ts",
-    "lint:fix": "eslint . --ext .ts --fix"
+    "lint:fix": "eslint . --ext .ts --fix",
+    "test": "bun test",
+    "test:watch": "bun test --watch",
+    "check": "bun run typecheck && bun run lint && bun run test && bun run build",
+    "mcpb:prepare": "bun run build && node scripts/prepare-mcpb.mjs",
+    "mcpb:validate": "bun run mcpb:prepare && mcpb validate .mcpb-build",
+    "mcpb:pack": "bun run mcpb:prepare && mcpb pack .mcpb-build dist/taskwarrior-mcp.mcpb",
+    "mcpb:info": "mcpb info dist/taskwarrior-mcp.mcpb"
   },
   "dependencies": {
-    "@modelcontextprotocol/sdk": "^1.0.0",
+    "@modelcontextprotocol/sdk": "^1.11.1",
     "diff": "^7.0.0",
     "glob": "^11.0.0",
     "minimatch": "^10.0.1",
     "zod-to-json-schema": "^3.23.5"
   },
   "devDependencies": {
+    "@anthropic-ai/mcpb": "^2.1.2",
     "@types/diff": "^7.0.0",
     "@types/minimatch": "^5.1.2",
     "@types/node": "^22.15.3",

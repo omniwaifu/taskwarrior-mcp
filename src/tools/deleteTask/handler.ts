@@ -10,7 +10,7 @@ import {
 // --- Standard MCP Interfaces (should ideally be imported) ---
 interface JsonContentItem {
   type: "json";
-  data: any;
+  data: unknown;
 }
 
 interface TextContentItem {
@@ -27,7 +27,7 @@ interface McpToolResponse {
   error?: {
     code: string;
     message: string;
-    details?: any;
+    details?: unknown;
   };
 }
 // --- End MCP Interfaces ---

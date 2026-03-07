@@ -4,12 +4,13 @@ import type {
 import {
   executeTaskWarriorCommandRaw,
   getTaskByUuid,
+  setTaskDependencies,
 } from "../../utils/taskwarrior.js";
 
 // --- Standard MCP Interfaces (should ideally be imported) ---
 interface JsonContentItem {
   type: "json";
-  data: any;
+  data: unknown;
 }
 
 interface TextContentItem {
@@ -26,7 +27,7 @@ interface McpToolResponse {
   error?: {
     code: string;
     message: string;
-    details?: any;
+    details?: unknown;
   };
 }
 // --- End MCP Interfaces ---
@@ -63,10 +64,11 @@ export const modifyTaskHandler = async (
     }
 
     const commandArgs: string[] = [uuid, "modify"];
+    let nextDepends: string[] | undefined;
 
     // Iterate over the modifications and add them to the command arguments
     if (modifications.description) {
-      commandArgs.push(`description:'${modifications.description.replace(/'/g, "'\\''")}'`);
+      commandArgs.push(`description:${modifications.description}`);
     }
     if (modifications.status) {
       commandArgs.push(`status:${modifications.status}`);
@@ -113,26 +115,22 @@ export const modifyTaskHandler = async (
     }
 
     // Handle dependencies
-    if (modifications.addDepends && modifications.addDepends.length > 0) {
-      // Get current dependencies and add new ones
+    if (
+      (modifications.addDepends && modifications.addDepends.length > 0) ||
+      (modifications.removeDepends && modifications.removeDepends.length > 0)
+    ) {
       const currentDepends = existingTask.depends || [];
-      const allDepends = [...currentDepends, ...modifications.addDepends];
-      commandArgs.push(`depends:${allDepends.join(",")}`);
-    }
-    if (modifications.removeDepends && modifications.removeDepends.length > 0) {
-      // Get current dependencies and remove specified ones
-      const currentDepends = existingTask.depends || [];
-      const newDepends = currentDepends.filter(
-        (dep) => !modifications.removeDepends?.includes(dep)
-      );
-      if (newDepends.length > 0) {
-        commandArgs.push(`depends:${newDepends.join(",")}`);
-      } else {
-        commandArgs.push(`depends:`); // Clear all dependencies
+      const depsToRemove = new Set(modifications.removeDepends || []);
+      nextDepends = currentDepends.filter((dep) => !depsToRemove.has(dep));
+
+      for (const dependency of modifications.addDepends || []) {
+        if (!depsToRemove.has(dependency) && !nextDepends.includes(dependency)) {
+          nextDepends.push(dependency);
+        }
       }
     }
 
-    if (commandArgs.length === 2) {
+    if (commandArgs.length === 2 && nextDepends === undefined) {
       console.warn(
         `[${toolName}] called for UUID ${uuid} but no actual modifications were provided in the request. Returning existing task.`,
       );
@@ -150,7 +148,13 @@ export const modifyTaskHandler = async (
       };
     }
 
-    executeTaskWarriorCommandRaw(commandArgs);
+    if (commandArgs.length > 2) {
+      executeTaskWarriorCommandRaw(commandArgs);
+    }
+
+    if (nextDepends !== undefined) {
+      setTaskDependencies(uuid, nextDepends);
+    }
 
     const updatedTask = await getTaskByUuid(uuid);
     if (!updatedTask) {

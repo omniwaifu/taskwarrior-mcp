@@ -1,6 +1,41 @@
-import type { GetRecurringTasksRequest } from "../../types/task.js";
+import type {
+  GetRecurringTasksRequest,
+  TaskWarriorTask,
+} from "../../types/task.js";
 import { executeTaskWarriorCommandJson } from "../../utils/taskwarrior.js";
 import { type EnrichedResponse } from "../../utils/mcpResponseFormat.js";
+
+interface HabitStats {
+  total_instances: number;
+  completed_count: number;
+  pending_count: number;
+  deleted_count: number;
+  waiting_count: number;
+  completion_rate: number;
+  current_streak: number;
+  longest_streak: number;
+  frequency: string;
+}
+
+type RecurringTaskWithStats = TaskWarriorTask & {
+  habit_stats: HabitStats;
+};
+
+function normalizeFrequency(recur: string): string {
+  if (recur.includes("day") || recur === "daily") {
+    return "daily";
+  }
+  if (recur.includes("week") || recur === "weekly") {
+    return "weekly";
+  }
+  if (recur.includes("month") || recur === "monthly") {
+    return "monthly";
+  }
+  if (recur.includes("year") || recur === "yearly") {
+    return "yearly";
+  }
+  return "other";
+}
 
 export async function handleGetRecurringTasks(
   args: GetRecurringTasksRequest,
@@ -15,23 +50,18 @@ export async function handleGetRecurringTasks(
     // Filter by frequency if specified
     let filteredTemplates = templates;
     if (args.frequency && args.frequency !== "all") {
-      filteredTemplates = templates.filter(task => {
-        const recur = (task as { recur?: string }).recur;
+      filteredTemplates = templates.filter((task) => {
+        const { recur } = task;
         if (!recur) return false;
 
-        const freq = args.frequency!;
-        if (freq === "daily") return recur.includes("day") || recur === "daily";
-        if (freq === "weekly") return recur.includes("week") || recur === "weekly";
-        if (freq === "monthly") return recur.includes("month") || recur === "monthly";
-        if (freq === "yearly") return recur.includes("year") || recur === "yearly";
-        return false;
+        return normalizeFrequency(recur) === args.frequency;
       });
     }
 
     // Analyze each recurring task
-    const enrichedTasks = filteredTemplates.map(task => {
-      const mask = (task as { mask?: string }).mask || "";
-      const recur = (task as { recur?: string }).recur || "unknown";
+    const enrichedTasks: RecurringTaskWithStats[] = filteredTemplates.map((task) => {
+      const mask = task.mask || "";
+      const recur = task.recur || "unknown";
 
       // Parse mask: - = pending, + = completed, X = deleted, W = waiting
       const total = mask.length;
@@ -72,6 +102,8 @@ export async function handleGetRecurringTasks(
           total_instances: total,
           completed_count: completed,
           pending_count: pending,
+          deleted_count: deleted,
+          waiting_count: waiting,
           completion_rate: completionRate,
           current_streak: currentStreak,
           longest_streak: longestStreak,
@@ -81,13 +113,9 @@ export async function handleGetRecurringTasks(
     });
 
     // Group by frequency
-    const byFrequency: Record<string, unknown[]> = {};
-    enrichedTasks.forEach(task => {
-      const freq = (task as { recur?: string }).recur || "unknown";
-      const freqKey = freq.includes("day") ? "daily" :
-                      freq.includes("week") ? "weekly" :
-                      freq.includes("month") ? "monthly" :
-                      freq.includes("year") ? "yearly" : "other";
+    const byFrequency: Record<string, RecurringTaskWithStats[]> = {};
+    enrichedTasks.forEach((task) => {
+      const freqKey = normalizeFrequency(task.recur || "unknown");
 
       if (!byFrequency[freqKey]) byFrequency[freqKey] = [];
       byFrequency[freqKey].push(task);
@@ -96,16 +124,21 @@ export async function handleGetRecurringTasks(
     // Generate insights
     const totalHabits = enrichedTasks.length;
     const avgCompletionRate = totalHabits > 0
-      ? Math.round(enrichedTasks.reduce((sum, t) => sum + ((t as any).habit_stats.completion_rate || 0), 0) / totalHabits)
+      ? Math.round(
+        enrichedTasks.reduce(
+          (sum, task) => sum + task.habit_stats.completion_rate,
+          0,
+        ) / totalHabits,
+      )
       : 0;
 
-    const brokenStreaks = enrichedTasks.filter(t => {
-      const stats = (t as any).habit_stats;
+    const brokenStreaks = enrichedTasks.filter((task) => {
+      const stats = task.habit_stats;
       return stats.current_streak === 0 && stats.total_instances > 0;
     });
 
-    const strongHabits = enrichedTasks.filter(t => {
-      const stats = (t as any).habit_stats;
+    const strongHabits = enrichedTasks.filter((task) => {
+      const stats = task.habit_stats;
       return stats.completion_rate >= 80 && stats.total_instances >= 5;
     });
 
@@ -123,8 +156,8 @@ export async function handleGetRecurringTasks(
     }
 
     const warnings: string[] = [];
-    const strugglingHabits = enrichedTasks.filter(t => {
-      const stats = (t as any).habit_stats;
+    const strugglingHabits = enrichedTasks.filter((task) => {
+      const stats = task.habit_stats;
       return stats.completion_rate < 50 && stats.total_instances >= 5;
     });
     if (strugglingHabits.length > 0) {
@@ -135,7 +168,7 @@ export async function handleGetRecurringTasks(
       tasks: enrichedTasks,
       metadata: {
         total: totalHabits,
-        actionable: enrichedTasks.filter(t => ((t as any).habit_stats.pending_count || 0) > 0).length,
+        actionable: enrichedTasks.filter((task) => task.habit_stats.pending_count > 0).length,
       },
       insights: {
         summary,

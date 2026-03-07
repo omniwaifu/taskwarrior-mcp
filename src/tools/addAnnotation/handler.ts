@@ -9,7 +9,7 @@ import {
 // --- Standard MCP Interfaces (should ideally be imported) ---
 interface JsonContentItem {
   type: "json";
-  data: any;
+  data: unknown;
 }
 
 interface TextContentItem {
@@ -26,7 +26,7 @@ interface McpToolResponse {
   error?: {
     code: string;
     message: string;
-    details?: any;
+    details?: unknown;
   };
 }
 // --- End MCP Interfaces ---
@@ -47,7 +47,7 @@ export const addAnnotationHandler = async (
     await executeTaskWarriorCommandRaw([
       uuid,
       "annotate",
-      `'${annotation.replace(/'/g, "'\\''").replace(/\n/g, "\\n")}'`, // Shell escape & newline escape
+      annotation.replace(/\n/g, "\\n"),
     ]);
 
     const updatedTask = await getTaskByUuid(uuid);

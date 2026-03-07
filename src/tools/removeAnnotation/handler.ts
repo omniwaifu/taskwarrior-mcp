@@ -9,7 +9,7 @@ import {
 // --- Standard MCP Interfaces (should ideally be imported) ---
 interface JsonContentItem {
   type: "json";
-  data: any;
+  data: unknown;
 }
 
 interface TextContentItem {
@@ -26,7 +26,7 @@ interface McpToolResponse {
   error?: {
     code: string;
     message: string;
-    details?: any;
+    details?: unknown;
   };
 }
 // --- End MCP Interfaces ---
@@ -60,9 +60,7 @@ export const removeAnnotationHandler = async (
 
     // Taskwarrior's `denotate` command can take the exact description or a pattern.
     // Using the exact description is safer if available.
-    // Ensure proper shell escaping for the annotation string.
-    const escapedAnnotation = annotation.replace(/'/g, "'\\''");
-    executeTaskWarriorCommandRaw([uuid, "denotate", `'${escapedAnnotation}'`]);
+    executeTaskWarriorCommandRaw([uuid, "denotate", annotation]);
 
     const updatedTask = await getTaskByUuid(uuid); // Refetch to get the modified task
     

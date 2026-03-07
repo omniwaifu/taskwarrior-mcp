@@ -1,7 +1,7 @@
 import type { RemoveDependencyRequest, TaskWarriorTask } from "../../types/task.js";
 import {
-  executeTaskWarriorCommandRaw,
   getTaskByUuid,
+  setTaskDependencies,
 } from "../../utils/taskwarrior.js";
 
 /**
@@ -24,17 +24,7 @@ export async function handleRemoveDependency(
     // We need to set depends to all current dependencies except the one being removed
     const newDepends = task.depends.filter(uuid => uuid !== args.depends_on_uuid);
 
-    let commandArgs: string[];
-    if (newDepends.length === 0) {
-      // Remove all dependencies
-      commandArgs = [args.task_uuid, "modify", "depends:"];
-    } else {
-      // Set to remaining dependencies
-      commandArgs = [args.task_uuid, "modify", `depends:${newDepends.join(",")}`];
-    }
-
-    const output = executeTaskWarriorCommandRaw(commandArgs);
-    console.log("TaskWarrior modify output:", output);
+    setTaskDependencies(args.task_uuid, newDepends);
 
     return await getTaskByUuid(args.task_uuid);
   } catch (error: unknown) {

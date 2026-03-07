@@ -1,0 +1,66 @@
+{
+  "manifest_version": "0.3",
+  "name": "taskwarrior-mcp",
+  "display_name": "TaskWarrior MCP",
+  "version": "1.0.1",
+  "description": "Local TaskWarrior MCP server for task management, GTD workflows, and recurring task tracking.",
+  "long_description": "TaskWarrior MCP exposes a local TaskWarrior installation to Claude Desktop. It supports task creation, modification, GTD review workflows, annotations, dependencies, batch operations, and recurring task reporting.\n\nPrerequisite: TaskWarrior must already be installed on the host machine and the `task` binary must be available on PATH, unless you override it in the bundle settings.",
+  "author": {
+    "name": "omniwaifu",
+    "url": "https://github.com/omniwaifu"
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/omniwaifu/taskwarrior-mcp.git"
+  },
+  "homepage": "https://github.com/omniwaifu/taskwarrior-mcp",
+  "documentation": "https://github.com/omniwaifu/taskwarrior-mcp#readme",
+  "support": "https://github.com/omniwaifu/taskwarrior-mcp/issues",
+  "server": {
+    "type": "node",
+    "entry_point": "server/index.js",
+    "mcp_config": {
+      "command": "node",
+      "args": [
+        "${__dirname}/server/index.js"
+      ],
+      "env": {
+        "TASK_BIN": "${user_config.task_bin}",
+        "TASKRC": "${user_config.taskrc}"
+      }
+    }
+  },
+  "license": "MIT",
+  "keywords": [
+    "taskwarrior",
+    "tasks",
+    "productivity",
+    "gtd",
+    "local"
+  ],
+  "compatibility": {
+    "platforms": [
+      "darwin",
+      "win32",
+      "linux"
+    ],
+    "runtimes": {
+      "node": ">=18.0.0"
+    }
+  },
+  "user_config": {
+    "task_bin": {
+      "type": "string",
+      "title": "TaskWarrior Binary",
+      "description": "Optional path or command name for the TaskWarrior executable.",
+      "required": false,
+      "default": "task"
+    },
+    "taskrc": {
+      "type": "string",
+      "title": "TASKRC Path",
+      "description": "Optional path to a TaskWarrior configuration file to use instead of the default.",
+      "required": false
+    }
+  }
+}

@@ -38,20 +38,21 @@ MCP server that wraps TaskWarrior command-line tool. Provides 22 tools for task 
 
 ## Requirements
 
-- Node.js 18+
-- TaskWarrior installed (`task` command available)
+- Node.js 18+ for runtime
+- Bun 1.3+ for development workflows
+- TaskWarrior installed and available as `task`
 
 ## Install
 
 ```bash
-npm install
-npm run build
+bun install
+bun run build
 ```
 
 ## Run
 
 ```bash
-npm start
+bun run start
 ```
 
 Or configure in your MCP client settings:
@@ -66,6 +67,19 @@ Or configure in your MCP client settings:
   }
 }
 ```
+
+## Claude Desktop Bundle
+
+This repo now includes an MCPB manifest for Claude Desktop.
+
+```bash
+bun run mcpb:validate
+bun run mcpb:pack
+```
+
+That produces `dist/taskwarrior-mcp.mcpb`.
+
+The bundle packages the MCP server, but it does not bundle TaskWarrior itself. Users still need `task` installed on the host machine. For non-default setups, the MCPB manifest exposes optional `TASK_BIN` and `TASKRC` settings.
 
 ## Response Format
 
@@ -117,9 +131,9 @@ TaskWarrior creates template task (status:recurring) that generates instances. U
 ## Development
 
 ```bash
-npm run typecheck  # Type check
-npm run lint       # Lint code
-npm run build      # Build dist/
+bun run typecheck  # Type check source
+bun run lint       # Lint source
+bun run test       # Run integration tests against disposable Taskwarrior data
+bun run build      # Build dist/
+bun run check      # Run typecheck, lint, and tests
 ```
-
-Build output: ~92kb

@@ -40,6 +40,9 @@ test/*.js
 *.map
 
 dist/*
+artifacts/
+.mcpb-build/
+*.mcpb
 
 # LLM Jazz
 scripts/*

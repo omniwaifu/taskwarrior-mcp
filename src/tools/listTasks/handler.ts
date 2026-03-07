@@ -4,32 +4,6 @@ import type {
 } from "../../types/task.js";
 import { executeTaskWarriorCommandJson } from "../../utils/taskwarrior.js";
 
-// Define standard MCP ContentItem types if not already available globally
-// For simplicity, defining inline; ideally, these come from an MCP SDK package
-interface JsonContentItem {
-  type: "json";
-  data: any;
-}
-
-interface TextContentItem {
-  type: "text";
-  text: string;
-}
-
-// Define a standard MCP ToolResponse structure
-interface McpToolResponse {
-  tool_name: string;
-  status: "success" | "error";
-  result?: {
-    content: Array<JsonContentItem | TextContentItem>;
-  };
-  error?: {
-    code: string;
-    message: string;
-    details?: any;
-  };
-}
-
 /**
  * List tasks based on various filter criteria
  */
@@ -77,14 +51,16 @@ export async function handleListTasks(
     return tasksArray; // Simply return the array directly
   } catch (error: unknown) {
     console.error(`Error in listTasks handler:`, error);
-    
+
     // If the error contains "No matches", return an empty array
-    if (error instanceof Error && 
-        (error.message.includes("No matches") || 
-         error.message.includes("No tasks found"))) {
+    if (
+      error instanceof Error &&
+      (error.message.includes("No matches") ||
+        error.message.includes("No tasks found"))
+    ) {
       return [];
     }
-    
+
     // Re-throw the error for the central handler to process
     throw error;
   }

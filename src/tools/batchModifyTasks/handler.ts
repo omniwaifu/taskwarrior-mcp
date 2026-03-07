@@ -16,7 +16,7 @@ export async function handleBatchModifyTasks(
         const commandArgs: string[] = [uuid, "modify"];
 
         if (modifications.description) {
-          commandArgs.push(`description:"${modifications.description}"`);
+          commandArgs.push(`description:${modifications.description}`);
         }
         if (modifications.status) {
           commandArgs.push(`status:${modifications.status}`);

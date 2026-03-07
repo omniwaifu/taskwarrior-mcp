@@ -5,7 +5,7 @@ import pluginUnusedImports from "eslint-plugin-unused-imports";
 export default [
   {
     // Global ignores
-    ignores: ["dist/**", ".history/**"],
+    ignores: ["dist/**", ".history/**", "vitest.config.ts"],
   },
   // Base JavaScript/general config (applies to .js and .ts files unless overridden)
   {
@@ -26,7 +26,7 @@ export default [
   },
   // TypeScript-specific configuration
   {
-    files: ["**/*.ts"], // Apply these rules only to .ts files
+    files: ["src/**/*.ts"], // Apply type-aware linting to the source tree only
     languageOptions: {
       parser: tseslint.parser, // Use the TypeScript parser
       parserOptions: {
@@ -61,6 +61,18 @@ export default [
           argsIgnorePattern: "^_",
         },
       ],
+    },
+  },
+  {
+    files: ["test/**/*.ts"],
+    languageOptions: {
+      parser: tseslint.parser,
+      parserOptions: {
+        sourceType: "module",
+      },
+      globals: {
+        ...globals.node,
+      },
     },
   },
 ];

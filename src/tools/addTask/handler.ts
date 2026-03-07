@@ -16,10 +16,12 @@ export async function handleAddTask(
   args: AddTaskRequest,
 ): Promise<TaskWarriorTask> {
   console.log(`addTask called with:`, args);
+  const knownTaskUuids = new Set(
+    (await executeTaskWarriorCommandJson(["export"])).map((task) => task.uuid),
+  );
 
   const commandArgs: string[] = ["add"];
-  // Ensure description is quoted and internal quotes escaped for the shell command
-  commandArgs.push(`'${args.description.replace(/'/g, "'\\''")}'`);
+  commandArgs.push(`description:${args.description}`);
 
   // Basic fields
   if (args.due) commandArgs.push(`due:${args.due}`);
@@ -69,19 +71,24 @@ export async function handleAddTask(
     }
 
     if (!createdTaskUuid) {
-      // Last resort: try to find by exact description (less reliable)
+      // Fall back to the newly introduced UUID, which also works when Taskwarrior output is silenced.
       console.warn(
-        "Could not parse new task ID or UUID from 'add' output. Falling back to description match.",
+        "Could not parse new task ID or UUID from 'add' output. Falling back to post-add task diff.",
       );
-      // Using single quotes for description in the command, and escaping internal single quotes
-      const descriptionForSearch = args.description.replace(/'/g, "'\\''");
-      const newTasks = await executeTaskWarriorCommandJson([
-        `description:'${descriptionForSearch}'`, // Ensure description is quoted and escaped
-        "limit:1",
-        "export",
-      ]);
-      if (newTasks.length > 0 && newTasks[0].uuid) {
-        createdTaskUuid = newTasks[0].uuid;
+      const tasksAfterAdd = await executeTaskWarriorCommandJson(["export"]);
+      const newlyAddedTasks = tasksAfterAdd.filter(
+        (task) => !knownTaskUuids.has(task.uuid),
+      );
+      const matchingTasks = newlyAddedTasks.filter(
+        (task) => task.description === args.description,
+      );
+      const candidateTasks = matchingTasks.length > 0 ? matchingTasks : newlyAddedTasks;
+
+      if (candidateTasks.length > 0 && candidateTasks[0].uuid) {
+        candidateTasks.sort((leftTask, rightTask) =>
+          rightTask.entry.localeCompare(leftTask.entry),
+        );
+        createdTaskUuid = candidateTasks[0].uuid;
       } else {
         throw new Error("Failed to determine UUID of the newly created task. Task might have been added, but its UUID could not be retrieved.");
       }
@@ -90,8 +97,11 @@ export async function handleAddTask(
     // Add annotations if provided
     if (args.annotations && args.annotations.length > 0) {
       for (const annotation of args.annotations) {
-        const escapedAnnotation = annotation.replace(/'/g, "'\\''");
-        const annotateArgs = [createdTaskUuid, "annotate", `'${escapedAnnotation}'`];
+        const annotateArgs = [
+          createdTaskUuid,
+          "annotate",
+          annotation.replace(/\n/g, "\\n"),
+        ];
         executeTaskWarriorCommandRaw(annotateArgs);
       }
     }

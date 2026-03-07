@@ -1,7 +1,7 @@
 import type { AddDependencyRequest, TaskWarriorTask } from "../../types/task.js";
 import {
-  executeTaskWarriorCommandRaw,
   getTaskByUuid,
+  setTaskDependencies,
 } from "../../utils/taskwarrior.js";
 
 /**
@@ -14,15 +14,14 @@ export async function handleAddDependency(
   console.log(`addDependency called with:`, args);
 
   try {
-    // Use TaskWarrior modify command to add dependency
-    const commandArgs = [
-      args.task_uuid,
-      "modify",
-      `depends:${args.depends_on_uuid}`,
-    ];
+    const task = await getTaskByUuid(args.task_uuid);
+    const currentDepends = task.depends || [];
 
-    const output = executeTaskWarriorCommandRaw(commandArgs);
-    console.log("TaskWarrior modify output:", output);
+    if (currentDepends.includes(args.depends_on_uuid)) {
+      return task;
+    }
+
+    setTaskDependencies(args.task_uuid, [...currentDepends, args.depends_on_uuid]);
 
     // Return the modified task
     return await getTaskByUuid(args.task_uuid);

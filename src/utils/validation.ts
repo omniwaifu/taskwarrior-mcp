@@ -26,8 +26,7 @@ export function isDueDateNotInPast(
     // If dueDate is an ISO string, it might be UTC. Ensure comparison is fair.
     // For simplicity, this example assumes dates are comparable as is.
     return dueDate >= today;
-  } catch (_e) {
-    // Variable _e is unused
+  } catch {
     // Invalid date string
     return false;
   }

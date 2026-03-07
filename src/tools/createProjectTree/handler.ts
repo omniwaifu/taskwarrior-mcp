@@ -8,10 +8,20 @@ export async function handleCreateProjectTree(
   console.log(`createProjectTree called with:`, args);
 
   try {
+    for (const [taskIndex, task] of args.tasks.entries()) {
+      for (const dependencyIndex of task.depends_on_indices || []) {
+        if (dependencyIndex < 0 || dependencyIndex >= args.tasks.length) {
+          throw new Error(
+            `Task at index ${taskIndex} references invalid dependency index ${dependencyIndex}.`,
+          );
+        }
+      }
+    }
+
     // Create the project task (parent)
     const projectTaskCommand = [
       "add",
-      args.project_description,
+      `description:${args.project_description}`,
       `project:${args.project_name}`,
       "tags:project_root",
     ];
@@ -34,7 +44,7 @@ export async function handleCreateProjectTree(
       const task = args.tasks[i];
       const commandArgs = [
         "add",
-        task.description,
+        `description:${task.description}`,
         `project:${args.project_name}`,
         `parent:${projectUuid}`,
       ];
