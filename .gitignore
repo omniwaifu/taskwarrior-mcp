@@ -46,6 +46,8 @@ artifacts/
 
 # LLM Jazz
 scripts/*
+!scripts/
+!scripts/prepare-mcpb.mjs
 .cursor
 .taskmasterconfig
 tasks
