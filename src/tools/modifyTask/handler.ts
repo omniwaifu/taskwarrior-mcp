@@ -6,6 +6,7 @@ import {
   getTaskByUuid,
   setTaskDependencies,
 } from "../../utils/taskwarrior.js";
+import { mergeTags, tagAssignmentArg } from "../../utils/tags.js";
 
 // --- Standard MCP Interfaces (should ideally be imported) ---
 interface JsonContentItem {
@@ -82,11 +83,15 @@ export const modifyTaskHandler = async (
     if (modifications.project !== undefined) {
       commandArgs.push(`project:${modifications.project}`);
     }
-    if (modifications.addTags && modifications.addTags.length > 0) {
-      modifications.addTags.forEach((tag) => commandArgs.push(`+${tag}`));
-    }
-    if (modifications.removeTags && modifications.removeTags.length > 0) {
-      modifications.removeTags.forEach((tag) => commandArgs.push(`-${tag}`));
+    if (
+      (modifications.addTags && modifications.addTags.length > 0) ||
+      (modifications.removeTags && modifications.removeTags.length > 0)
+    ) {
+      commandArgs.push(
+        tagAssignmentArg(
+          mergeTags(existingTask.tags, modifications.addTags, modifications.removeTags),
+        ),
+      );
     }
 
     // GTD fields

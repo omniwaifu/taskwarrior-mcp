@@ -8,6 +8,7 @@ import {
   executeTaskWarriorCommandJson,
   getTaskByUuid,
 } from "../../utils/taskwarrior.js";
+import { tagAssignmentArg } from "../../utils/tags.js";
 
 /**
  * Add a new task to TaskWarrior
@@ -15,7 +16,7 @@ import {
 export async function handleAddTask(
   args: AddTaskRequest,
 ): Promise<TaskWarriorTask> {
-  console.log(`addTask called with:`, args);
+  console.error(`addTask called with:`, args);
   const knownTaskUuids = new Set(
     (await executeTaskWarriorCommandJson(["export"])).map((task) => task.uuid),
   );
@@ -28,7 +29,7 @@ export async function handleAddTask(
   if (args.priority) commandArgs.push(`priority:${args.priority}`);
   if (args.project) commandArgs.push(`project:${args.project}`);
   if (args.tags && args.tags.length > 0) {
-    args.tags.forEach((tag) => commandArgs.push(`+${tag}`));
+    commandArgs.push(tagAssignmentArg(args.tags));
   }
 
   // GTD fields
@@ -47,7 +48,7 @@ export async function handleAddTask(
 
   try {
     const addOutput = executeTaskWarriorCommandRaw(commandArgs);
-    console.log("TaskWarrior add output:", addOutput);
+    console.error("TaskWarrior add output:", addOutput);
 
     let createdTaskUuid: string | undefined;
     const idMatch = addOutput.match(/Created task (\d+)/i); // Made case-insensitive for safety
@@ -55,10 +56,10 @@ export async function handleAddTask(
 
     if (newUuidMatch && newUuidMatch[1]) {
       createdTaskUuid = newUuidMatch[1];
-      console.log(`Extracted new task UUID directly from output: ${createdTaskUuid}`);
+      console.error(`Extracted new task UUID directly from output: ${createdTaskUuid}`);
     } else if (idMatch && idMatch[1]) {
       const newTaskId = idMatch[1];
-      console.log(`Extracted new task ID from output: ${newTaskId}. Fetching details...`);
+      console.error(`Extracted new task ID from output: ${newTaskId}. Fetching details...`);
       const newlyAddedTasks = await executeTaskWarriorCommandJson([
         newTaskId,
         "export",

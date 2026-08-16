@@ -48,7 +48,7 @@ export function executeTaskWarriorCommandRaw(
   const renderedCommand = formatTaskCommand(commandArgs);
 
   try {
-    console.log(`Executing: ${renderedCommand}`);
+    console.error(`Executing: ${renderedCommand}`);
     return execFileSync(getTaskBinary(), commandArgs, finalOptions).trim();
   } catch (error: unknown) {
     console.error(`Error executing TaskWarrior command: ${renderedCommand}`);
@@ -120,7 +120,7 @@ export async function executeTaskWarriorCommandJson(
       trimmedOutput === "No pending tasks." ||
       trimmedOutput === "" // Handles completely empty output
     ) {
-      console.log(`executeTaskWarriorCommandJson - Received "No matches" equivalent: "${trimmedOutput}". Returning empty array.`);
+      console.error(`executeTaskWarriorCommandJson - Received "No matches" equivalent: "${trimmedOutput}". Returning empty array.`);
       return [];
     }
 
@@ -129,7 +129,7 @@ export async function executeTaskWarriorCommandJson(
       // First attempt: try to parse the whole output as a single JSON array
       const parsedArray = JSON.parse(trimmedOutput);
       if (Array.isArray(parsedArray)) {
-        console.log(`Successfully parsed output as a complete JSON array with ${parsedArray.length} items`);
+        console.error(`Successfully parsed output as a complete JSON array with ${parsedArray.length} items`);
         
         // Validate all objects in the array
         const validatedObjects = [];
@@ -147,7 +147,7 @@ export async function executeTaskWarriorCommandJson(
         return validatedObjects;
       }
     } catch {
-      console.log("Failed to parse output as a complete JSON array, trying line by line parsing");
+      console.error("Failed to parse output as a complete JSON array, trying line by line parsing");
     }
 
     // Fallback: If parsing the whole output failed, try parsing each line as a separate JSON object
@@ -201,7 +201,7 @@ export async function executeTaskWarriorCommandJson(
         error.message.includes("No tasks") ||
         error.message.includes("No pending tasks")
       ) {
-        console.log(`executeTaskWarriorCommandJson - Caught error with "No matches" pattern: "${error.message}". Returning empty array.`);
+        console.error(`executeTaskWarriorCommandJson - Caught error with "No matches" pattern: "${error.message}". Returning empty array.`);
         return [];
       }
     }

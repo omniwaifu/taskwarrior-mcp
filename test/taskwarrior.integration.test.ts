@@ -7,6 +7,7 @@ import { join } from "node:path";
 import { addAnnotationHandler } from "../src/tools/addAnnotation/handler.ts";
 import { handleAddDependency } from "../src/tools/addDependency/handler.ts";
 import { handleAddTask } from "../src/tools/addTask/handler.ts";
+import { handleBatchModifyTasks } from "../src/tools/batchModifyTasks/handler.ts";
 import { handleListTasks } from "../src/tools/listTasks/handler.ts";
 import { modifyTaskHandler } from "../src/tools/modifyTask/handler.ts";
 import { removeAnnotationHandler } from "../src/tools/removeAnnotation/handler.ts";
@@ -27,6 +28,13 @@ const hasTaskwarrior =
   spawnSync("task", ["--version"], { stdio: "ignore" }).status === 0;
 
 const integrationDescribe = hasTaskwarrior ? describe : describe.skip;
+
+// Specifiers for the stdout-purity child process below, which receives its source as text.
+const addTaskHandlerPath = new URL("../src/tools/addTask/handler.ts", import.meta.url).href;
+const modifyTaskHandlerPath = new URL(
+  "../src/tools/modifyTask/handler.ts",
+  import.meta.url,
+).href;
 
 function createSandbox(): TaskwarriorSandbox {
   const tempDir = mkdtempSync(join(tmpdir(), "taskwarrior-mcp-"));
@@ -212,6 +220,89 @@ integrationDescribe("TaskWarrior integration", () => {
     });
 
     expect(updatedTask.depends).toEqual([blockerB.uuid]);
+  });
+
+  test("keeps the description intact when adding a hyphenated tag", async () => {
+    const createdTask = await handleAddTask({
+      description: "Write the quarterly report",
+      tags: ["high-priority", "home"],
+    });
+
+    expect(createdTask.description).toBe("Write the quarterly report");
+    expect((createdTask.tags || []).sort()).toEqual(["high-priority", "home"]);
+  });
+
+  test("modifies tags without overwriting the description or existing tags", async () => {
+    const createdTask = await handleAddTask({
+      description: "Review the release notes",
+      tags: ["inbox", "work"],
+    });
+
+    const result = await modifyTaskHandler({
+      uuid: createdTask.uuid,
+      addTags: ["needs-review"],
+      removeTags: ["inbox"],
+    });
+
+    expect(result.status).toBe("success");
+
+    const updatedTask = await getTaskByUuid(createdTask.uuid);
+    expect(updatedTask.description).toBe("Review the release notes");
+    expect((updatedTask.tags || []).sort()).toEqual(["needs-review", "work"]);
+  });
+
+  test("filters tasks by a hyphenated tag", async () => {
+    const taggedTask = await handleAddTask({
+      description: "Tagged task",
+      tags: ["high-priority"],
+    });
+    await handleAddTask({ description: "Untagged task" });
+
+    const listedTasks = await handleListTasks({ tags: ["high-priority"] });
+    expect(listedTasks.map((task) => task.uuid)).toEqual([taggedTask.uuid]);
+  });
+
+  test("batch tag changes preserve descriptions and untouched tags", async () => {
+    const firstTask = await handleAddTask({
+      description: "First batch task",
+      tags: ["inbox", "work"],
+    });
+    const secondTask = await handleAddTask({
+      description: "Second batch task",
+      tags: ["inbox"],
+    });
+
+    await handleBatchModifyTasks({
+      uuids: [firstTask.uuid, secondTask.uuid],
+      modifications: { addTags: ["needs-review"], removeTags: ["inbox"] },
+    });
+
+    const updatedFirst = await getTaskByUuid(firstTask.uuid);
+    const updatedSecond = await getTaskByUuid(secondTask.uuid);
+
+    expect(updatedFirst.description).toBe("First batch task");
+    expect((updatedFirst.tags || []).sort()).toEqual(["needs-review", "work"]);
+    expect(updatedSecond.description).toBe("Second batch task");
+    expect(updatedSecond.tags).toEqual(["needs-review"]);
+  });
+
+  test("keeps stdout free of diagnostics so the stdio transport stays parseable", () => {
+    // Runs in a child process because Bun's console.log writes straight to fd 1 and would
+    // bypass an in-process process.stdout.write patch.
+    const script = [
+      `const { handleAddTask } = await import(${JSON.stringify(addTaskHandlerPath)});`,
+      `const { modifyTaskHandler } = await import(${JSON.stringify(modifyTaskHandlerPath)});`,
+      `const task = await handleAddTask({ description: "Quiet task" });`,
+      `await modifyTaskHandler({ uuid: task.uuid, addTags: ["quiet-tag"] });`,
+    ].join("\n");
+
+    const child = spawnSync(process.execPath, ["-e", script], {
+      encoding: "utf8",
+      env: { ...process.env, TASKRC: sandbox.taskrc },
+    });
+
+    expect(child.status).toBe(0);
+    expect(child.stdout).toBe("");
   });
 
   test("surfaces taskwarrior infrastructure errors instead of returning an empty list", async () => {

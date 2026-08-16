@@ -44,7 +44,7 @@ export const markTaskDoneHandler = async (
     const taskToMark = await getTaskByUuid(uuid); // Throws if not found
 
     if (taskToMark.status === "completed") {
-      console.log(`Task '${uuid}' is already completed.`);
+      console.error(`Task '${uuid}' is already completed.`);
       // Return success with the already completed task
       return {
         tool_name: toolName,

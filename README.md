@@ -114,6 +114,9 @@ GTD tools return enriched responses with:
 - `depends` - Array of task UUIDs this depends on
 - `parent` - Parent task UUID
 - `recur` - Recurrence pattern (daily, weekly, monthly, etc.)
+- `tags` - Letters, digits, `_` and `-`. Tag writes use Taskwarrior's `tags:` attribute and tag
+  filters use `tags.has:`, because the `+tag` shorthand rejects hyphens and silently rewrites the
+  description instead.
 
 ### Recurring Tasks
 Set `recur` with `due` to create habits:
@@ -135,5 +138,5 @@ bun run typecheck  # Type check source
 bun run lint       # Lint source
 bun run test       # Run integration tests against disposable Taskwarrior data
 bun run build      # Build dist/
-bun run check      # Run typecheck, lint, and tests
+bun run check      # Run typecheck, lint, tests, and build
 ```

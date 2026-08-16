@@ -10,7 +10,7 @@ import {
 export async function handleRemoveDependency(
   args: RemoveDependencyRequest,
 ): Promise<TaskWarriorTask> {
-  console.log(`removeDependency called with:`, args);
+  console.error(`removeDependency called with:`, args);
 
   try {
     // Get current task to check dependencies

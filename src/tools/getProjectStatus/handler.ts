@@ -5,7 +5,7 @@ import { type EnrichedResponse } from "../../utils/mcpResponseFormat.js";
 export async function handleGetProjectStatus(
   args: GetProjectStatusRequest,
 ): Promise<EnrichedResponse> {
-  console.log(`getProjectStatus called with:`, args);
+  console.error(`getProjectStatus called with:`, args);
 
   try {
     const allProjectTasks = await executeTaskWarriorCommandJson([

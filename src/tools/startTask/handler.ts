@@ -43,9 +43,7 @@ export const startTaskHandler = async (
     // Taskwarrior's `start` command is idempotent on an already started task,
     // but it might update the start time if run again. We'll proceed.
     if (taskToStart.start) {
-      console.log(
-        `[${toolName}] Task '${uuid}' is already started (start date: ${taskToStart.start}). Proceeding to ensure it's active or re-start if behavior dictates.`,
-      );
+      console.error(`[${toolName}] Task '${uuid}' is already started (start date: ${taskToStart.start}). Proceeding to ensure it's active or re-start if behavior dictates.`,);
     }
 
     executeTaskWarriorCommandRaw([uuid, "start"]);

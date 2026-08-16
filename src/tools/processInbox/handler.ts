@@ -6,7 +6,7 @@ import { generateInsights, type EnrichedResponse } from "../../utils/mcpResponse
  * Returns enriched response with inbox tasks that need processing
  */
 export async function handleProcessInbox(): Promise<EnrichedResponse> {
-  console.log(`processInbox called`);
+  console.error(`processInbox called`);
 
   try {
     // Get all tasks with +inbox tag

@@ -48,7 +48,7 @@ export const deleteTaskHandler = async (
     commandArgs.push(uuid, "delete");
 
     const deleteOutput = executeTaskWarriorCommandRaw(commandArgs);
-    console.log(`TaskWarrior delete output for UUID '${uuid}':`, deleteOutput);
+    console.error(`TaskWarrior delete output for UUID '${uuid}':`, deleteOutput);
 
     // Verify deletion by trying to fetch the task again
     try {

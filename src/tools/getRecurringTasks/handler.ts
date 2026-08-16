@@ -40,7 +40,7 @@ function normalizeFrequency(recur: string): string {
 export async function handleGetRecurringTasks(
   args: GetRecurringTasksRequest,
 ): Promise<EnrichedResponse> {
-  console.log(`getRecurringTasks called with:`, args);
+  console.error(`getRecurringTasks called with:`, args);
 
   try {
     const filterArgs: string[] = ["status:recurring"];

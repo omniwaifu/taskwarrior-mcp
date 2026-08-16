@@ -1,11 +1,12 @@
 import type { CreateProjectTreeRequest } from "../../types/task.js";
 import { executeTaskWarriorCommandRaw } from "../../utils/taskwarrior.js";
+import { tagAssignmentArg } from "../../utils/tags.js";
 import { type EnrichedResponse } from "../../utils/mcpResponseFormat.js";
 
 export async function handleCreateProjectTree(
   args: CreateProjectTreeRequest,
 ): Promise<EnrichedResponse> {
-  console.log(`createProjectTree called with:`, args);
+  console.error(`createProjectTree called with:`, args);
 
   try {
     for (const [taskIndex, task] of args.tasks.entries()) {
@@ -51,8 +52,8 @@ export async function handleCreateProjectTree(
 
       if (task.priority) commandArgs.push(`priority:${task.priority}`);
       if (task.context) commandArgs.push(`context:${task.context}`);
-      if (task.tags) {
-        task.tags.forEach(tag => commandArgs.push(`+${tag}`));
+      if (task.tags && task.tags.length > 0) {
+        commandArgs.push(tagAssignmentArg(task.tags));
       }
 
       const result = await executeTaskWarriorCommandRaw(commandArgs);

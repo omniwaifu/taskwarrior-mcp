@@ -2,7 +2,7 @@ import { executeTaskWarriorCommandJson } from "../../utils/taskwarrior.js";
 import { type EnrichedResponse } from "../../utils/mcpResponseFormat.js";
 
 export async function handleWeeklyReview(): Promise<EnrichedResponse> {
-  console.log(`weeklyReview called`);
+  console.error(`weeklyReview called`);
 
   try {
     const allPending = await executeTaskWarriorCommandJson(["status:pending"]);

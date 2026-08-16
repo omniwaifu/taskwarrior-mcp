@@ -41,9 +41,7 @@ export const stopTaskHandler = async (
     const taskToStop = await getTaskByUuid(uuid); // Throws if not found
 
     if (!taskToStop.start) {
-      console.log(
-        `[${toolName}] Task '${uuid}' is not started. Stop command may be a no-op. Returning current task state.`,
-      );
+      console.error(`[${toolName}] Task '${uuid}' is not started. Stop command may be a no-op. Returning current task state.`,);
       // Still return success as the desired state (not started) is met or command is no-op
       return {
         tool_name: toolName,

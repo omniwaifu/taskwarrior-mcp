@@ -1,11 +1,12 @@
 import type { BatchModifyTasksRequest } from "../../types/task.js";
-import { executeTaskWarriorCommandRaw } from "../../utils/taskwarrior.js";
+import { executeTaskWarriorCommandRaw, getTaskByUuid } from "../../utils/taskwarrior.js";
+import { mergeTags, tagAssignmentArg } from "../../utils/tags.js";
 import { type EnrichedResponse } from "../../utils/mcpResponseFormat.js";
 
 export async function handleBatchModifyTasks(
   args: BatchModifyTasksRequest,
 ): Promise<EnrichedResponse> {
-  console.log(`batchModifyTasks called with:`, args);
+  console.error(`batchModifyTasks called with:`, args);
 
   try {
     const results: { uuid: string; success: boolean; error?: string }[] = [];
@@ -50,11 +51,16 @@ export async function handleBatchModifyTasks(
           commandArgs.push(`energy:${modifications.energy}`);
         }
 
-        if (modifications.addTags && modifications.addTags.length > 0) {
-          modifications.addTags.forEach(tag => commandArgs.push(`+${tag}`));
-        }
-        if (modifications.removeTags && modifications.removeTags.length > 0) {
-          modifications.removeTags.forEach(tag => commandArgs.push(`-${tag}`));
+        const hasTagChanges =
+          (modifications.addTags && modifications.addTags.length > 0) ||
+          (modifications.removeTags && modifications.removeTags.length > 0);
+        if (hasTagChanges) {
+          const existingTask = await getTaskByUuid(uuid);
+          commandArgs.push(
+            tagAssignmentArg(
+              mergeTags(existingTask.tags, modifications.addTags, modifications.removeTags),
+            ),
+          );
         }
 
         await executeTaskWarriorCommandRaw(commandArgs);

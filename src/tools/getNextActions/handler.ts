@@ -15,7 +15,7 @@ import { generateInsights, type EnrichedResponse } from "../../utils/mcpResponse
 export async function handleGetNextActions(
   args: GetNextActionsRequest,
 ): Promise<EnrichedResponse> {
-  console.log(`getNextActions called with:`, args);
+  console.error(`getNextActions called with:`, args);
 
   try {
     // Build TaskWarrior filter

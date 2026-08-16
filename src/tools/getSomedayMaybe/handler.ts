@@ -5,7 +5,7 @@ import { type EnrichedResponse } from "../../utils/mcpResponseFormat.js";
 export async function handleGetSomedayMaybe(
   args: GetSomedayMaybeRequest,
 ): Promise<EnrichedResponse> {
-  console.log(`getSomedayMaybe called with:`, args);
+  console.error(`getSomedayMaybe called with:`, args);
 
   try {
     const commandArgs: string[] = ["status:pending", "+someday"];

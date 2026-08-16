@@ -11,7 +11,7 @@ import {
 export async function handleAddDependency(
   args: AddDependencyRequest,
 ): Promise<TaskWarriorTask> {
-  console.log(`addDependency called with:`, args);
+  console.error(`addDependency called with:`, args);
 
   try {
     const task = await getTaskByUuid(args.task_uuid);

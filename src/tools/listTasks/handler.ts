@@ -3,6 +3,7 @@ import type {
   TaskWarriorTask,
 } from "../../types/task.js";
 import { executeTaskWarriorCommandJson } from "../../utils/taskwarrior.js";
+import { tagFilterArgs } from "../../utils/tags.js";
 
 /**
  * List tasks based on various filter criteria
@@ -16,7 +17,7 @@ export async function handleListTasks(
     filters.push(`project:${args.project}`);
   }
   if (args.tags && args.tags.length > 0) {
-    args.tags.forEach((tag) => filters.push(`+${tag}`));
+    filters.push(...tagFilterArgs(args.tags));
   }
   if (args.status) {
     filters.push(`status:${args.status}`);

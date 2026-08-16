@@ -9,7 +9,7 @@ import { generateInsights, type EnrichedResponse } from "../../utils/mcpResponse
 export async function handleGetWaitingFor(
   args: GetWaitingForRequest,
 ): Promise<EnrichedResponse> {
-  console.log(`getWaitingFor called with:`, args);
+  console.error(`getWaitingFor called with:`, args);
 
   try {
     // Get tasks with wait date or waiting status

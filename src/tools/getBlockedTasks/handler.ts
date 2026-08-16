@@ -9,7 +9,7 @@ import { generateInsights, type EnrichedResponse } from "../../utils/mcpResponse
 export async function handleGetBlockedTasks(
   args: GetBlockedTasksRequest,
 ): Promise<EnrichedResponse> {
-  console.log(`getBlockedTasks called with:`, args);
+  console.error(`getBlockedTasks called with:`, args);
 
   try {
     // Build filter
