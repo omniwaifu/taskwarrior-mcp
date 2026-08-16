@@ -1,0 +1,16 @@
+version: 2
+updates:
+  - package-ecosystem: "bun"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+    open-pull-requests-limit: 5
+    ignore:
+      # dist/ targets Node 18 (manifest.json engines), so stay on the matching typings.
+      - dependency-name: "@types/node"
+        versions: [">=23"]
+
+  - package-ecosystem: "github-actions"
+    directory: "/"
+    schedule:
+      interval: "weekly"

@@ -21,8 +21,8 @@
     "start": "node dist/index.js",
     "dev": "esbuild src/index.ts --bundle --outfile=dist/index.js --platform=node --format=esm --watch",
     "watch": "bun run dev",
-    "lint": "eslint . --ext .ts",
-    "lint:fix": "eslint . --ext .ts --fix",
+    "lint": "eslint .",
+    "lint:fix": "eslint . --fix",
     "test": "bun test",
     "test:watch": "bun test --watch",
     "check": "bun run typecheck && bun run lint && bun run test && bun run build",
@@ -32,25 +32,20 @@
     "mcpb:info": "mcpb info dist/taskwarrior-mcp.mcpb"
   },
   "dependencies": {
-    "@modelcontextprotocol/sdk": "^1.11.1",
-    "diff": "^7.0.0",
-    "glob": "^11.0.0",
-    "minimatch": "^10.0.1",
-    "zod-to-json-schema": "^3.23.5"
+    "@modelcontextprotocol/sdk": "^1.30.0",
+    "zod": "^3.25.76"
   },
   "devDependencies": {
     "@anthropic-ai/mcpb": "^2.1.2",
-    "@types/diff": "^7.0.0",
-    "@types/minimatch": "^5.1.2",
-    "@types/node": "^22.15.3",
-    "@typescript-eslint/eslint-plugin": "^8.32.0",
-    "@typescript-eslint/parser": "^8.32.0",
-    "esbuild": "^0.25.4",
-    "eslint": "^9.26.0",
-    "eslint-plugin-unused-imports": "^4.1.4",
-    "globals": "^16.1.0",
+    "@types/node": "^22.20.1",
+    "@typescript-eslint/eslint-plugin": "^8.67.0",
+    "@typescript-eslint/parser": "^8.67.0",
+    "esbuild": "^0.28",
+    "eslint": "^10",
+    "eslint-plugin-unused-imports": "^4.4.1",
+    "globals": "^17",
     "shx": "^0.4.0",
-    "typescript": "^5.3.3",
-    "typescript-eslint": "^8.32.0"
+    "typescript": "^5.9.3",
+    "typescript-eslint": "^8.67.0"
   }
 }
