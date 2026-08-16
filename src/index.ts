@@ -53,7 +53,7 @@ import {
 
 const server = new McpServer({
   name: "taskwarrior-server",
-  version: "1.0.2",
+  version: "1.0.3",
 });
 
 type ToolInputSchema = Record<string, unknown>;
