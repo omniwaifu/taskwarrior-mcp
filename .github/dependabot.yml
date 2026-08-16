@@ -9,6 +9,12 @@ updates:
       # dist/ targets Node 18 (manifest.json engines), so stay on the matching typings.
       - dependency-name: "@types/node"
         versions: [">=23"]
+      # zod 4 changes the schema API that src/types/task.ts uses.
+      - dependency-name: "zod"
+        versions: [">=4"]
+      # typescript-eslint 8 requires typescript below 6.1.
+      - dependency-name: "typescript"
+        versions: [">=6"]
 
   - package-ecosystem: "github-actions"
     directory: "/"
