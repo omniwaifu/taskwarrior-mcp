@@ -46,6 +46,6 @@
     "globals": "^17",
     "shx": "^0.4.0",
     "typescript": "^5.9.3",
-    "typescript-eslint": "^8.67.0"
+    "typescript-eslint": "^8.69.0"
   }
 }
