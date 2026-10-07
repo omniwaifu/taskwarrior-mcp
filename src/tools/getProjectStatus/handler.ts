@@ -1,3 +1,4 @@
+import { parseTaskwarriorDate } from "../../utils/dates.js";
 import type { GetProjectStatusRequest } from "../../types/task.js";
 import { executeTaskWarriorCommandJson } from "../../utils/taskwarrior.js";
 import { type EnrichedResponse } from "../../utils/mcpResponseFormat.js";
@@ -19,7 +20,7 @@ export async function handleGetProjectStatus(
     const nextActions = pendingTasks.filter(task => {
       if (task.depends && task.depends.length > 0) return false;
       if (task.wait) {
-        const waitDate = new Date(task.wait);
+        const waitDate = parseTaskwarriorDate(task.wait);
         if (waitDate > now) return false;
       }
       return true;
@@ -32,13 +33,13 @@ export async function handleGetProjectStatus(
     let lastActivity: Date | null = null;
     for (const task of allProjectTasks) {
       if (task.modified) {
-        const modDate = new Date(task.modified);
+        const modDate = parseTaskwarriorDate(task.modified);
         if (!lastActivity || modDate > lastActivity) {
           lastActivity = modDate;
         }
       }
       if (task.end) {
-        const endDate = new Date(task.end);
+        const endDate = parseTaskwarriorDate(task.end);
         if (!lastActivity || endDate > lastActivity) {
           lastActivity = endDate;
         }

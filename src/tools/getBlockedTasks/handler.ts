@@ -1,3 +1,4 @@
+import { parseTaskwarriorDate } from "../../utils/dates.js";
 import type { GetBlockedTasksRequest } from "../../types/task.js";
 import { executeTaskWarriorCommandJson } from "../../utils/taskwarrior.js";
 import { generateInsights, type EnrichedResponse } from "../../utils/mcpResponseFormat.js";
@@ -13,7 +14,10 @@ export async function handleGetBlockedTasks(
 
   try {
     // Build filter
-    const filterArgs: string[] = ["status:pending"];
+    // Taskwarrior's pending filter excludes deferred tasks, even when export says pending.
+    const filterArgs: string[] = args.include_waiting
+      ? ["(", "status:pending", "or", "status:waiting", ")"]
+      : ["status:pending"];
     if (args.project) {
       filterArgs.push(`project:${args.project}`);
     }
@@ -32,12 +36,13 @@ export async function handleGetBlockedTasks(
       const waitingTasks = allTasks.filter(task => {
         if (task.status === 'waiting') return true;
         if (task.wait) {
-          const waitDate = new Date(task.wait);
+          const waitDate = parseTaskwarriorDate(task.wait);
           return waitDate > now;
         }
         return false;
       });
-      blockedTasks = [...blockedTasks, ...waitingTasks];
+      const blockedUuids = new Set(blockedTasks.map(task => task.uuid));
+      blockedTasks = [...blockedTasks, ...waitingTasks.filter(task => !blockedUuids.has(task.uuid))];
     }
 
     // Build relationships showing what's blocking what

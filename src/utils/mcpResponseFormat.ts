@@ -1,3 +1,5 @@
+import { parseTaskwarriorDate } from "./dates.js";
+
 /**
  * MCP Response Format Utilities
  * Standardizes response formatting for MCP tools
@@ -116,7 +118,7 @@ export function generateInsights(
     if (highPriority.length > 0) {
       insights.recommendations.push(`${highPriority.length} high priority tasks need attention`);
     }
-    const overdue = tasks.filter(t => t.due && new Date(t.due) < new Date() && t.status === 'pending');
+    const overdue = tasks.filter(t => t.due && parseTaskwarriorDate(t.due) < new Date() && t.status === 'pending');
     if (overdue.length > 0) {
       insights.recommendations.push(`${overdue.length} tasks are overdue`);
     }

@@ -1,3 +1,4 @@
+import { parseTaskwarriorDate } from "../../utils/dates.js";
 import { executeTaskWarriorCommandJson } from "../../utils/taskwarrior.js";
 import { type EnrichedResponse } from "../../utils/mcpResponseFormat.js";
 
@@ -5,7 +6,8 @@ export async function handleWeeklyReview(): Promise<EnrichedResponse> {
   console.error(`weeklyReview called`);
 
   try {
-    const allPending = await executeTaskWarriorCommandJson(["status:pending"]);
+    // Taskwarrior's pending filter excludes deferred tasks, even when export says pending.
+    const allPending = await executeTaskWarriorCommandJson(["(", "status:pending", "or", "status:waiting", ")"]);
     const inboxTasks = allPending.filter(t => t.tags && t.tags.includes('inbox'));
 
     const sevenDaysAgo = new Date();
@@ -21,7 +23,7 @@ export async function handleWeeklyReview(): Promise<EnrichedResponse> {
     const waitingTasks = allPending.filter(task => {
       if (task.status === 'waiting') return true;
       if (task.wait) {
-        const waitDate = new Date(task.wait);
+        const waitDate = parseTaskwarriorDate(task.wait);
         return waitDate > now;
       }
       return false;
@@ -29,7 +31,7 @@ export async function handleWeeklyReview(): Promise<EnrichedResponse> {
 
     const overdueTasks = allPending.filter(task => {
       if (!task.due) return false;
-      const dueDate = new Date(task.due);
+      const dueDate = parseTaskwarriorDate(task.due);
       return dueDate < now && task.status === 'pending';
     });
 
@@ -42,9 +44,10 @@ export async function handleWeeklyReview(): Promise<EnrichedResponse> {
     for (const project of projects) {
       const projectTasks = allPending.filter(t => t.project === project);
       const nextActions = projectTasks.filter(task => {
+        if (task.status === 'waiting') return false;
         if (task.depends && task.depends.length > 0) return false;
         if (task.wait) {
-          const waitDate = new Date(task.wait);
+          const waitDate = parseTaskwarriorDate(task.wait);
           if (waitDate > now) return false;
         }
         return true;
@@ -63,13 +66,13 @@ export async function handleWeeklyReview(): Promise<EnrichedResponse> {
       let lastActivity: Date | null = null;
       for (const task of projectTasks) {
         if (task.modified) {
-          const modDate = new Date(task.modified);
+          const modDate = parseTaskwarriorDate(task.modified);
           if (!lastActivity || modDate > lastActivity) {
             lastActivity = modDate;
           }
         }
         if (task.end) {
-          const endDate = new Date(task.end);
+          const endDate = parseTaskwarriorDate(task.end);
           if (!lastActivity || endDate > lastActivity) {
             lastActivity = endDate;
           }
