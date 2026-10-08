@@ -140,3 +140,8 @@ bun run test       # Run integration tests against disposable Taskwarrior data
 bun run build      # Build dist/
 bun run check      # Run typecheck, lint, tests, and build
 ```
+
+Pull requests and pushes to `main` run these checks with Taskwarrior installed,
+validate and build the MCPB bundle, and audit the locked dependencies in a separate
+job. Locally, integration tests are skipped if `task` is missing; the command
+diagnostic regression tests still run without it.
