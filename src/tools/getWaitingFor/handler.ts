@@ -1,3 +1,4 @@
+import { parseTaskwarriorDate } from "../../utils/dates.js";
 import type { GetWaitingForRequest } from "../../types/task.js";
 import { executeTaskWarriorCommandJson } from "../../utils/taskwarrior.js";
 import { generateInsights, type EnrichedResponse } from "../../utils/mcpResponseFormat.js";
@@ -12,8 +13,8 @@ export async function handleGetWaitingFor(
   console.error(`getWaitingFor called with:`, args);
 
   try {
-    // Get tasks with wait date or waiting status
-    const allTasks = await executeTaskWarriorCommandJson(["status:pending"]);
+    // Taskwarrior's pending filter excludes deferred tasks, even when export says pending.
+    const allTasks = await executeTaskWarriorCommandJson(["(", "status:pending", "or", "status:waiting", ")"]);
 
     const now = new Date();
     const waitingTasks = allTasks.filter(task => {
@@ -22,7 +23,7 @@ export async function handleGetWaitingFor(
 
       // Include if wait date is set and in the future
       if (task.wait) {
-        const waitDate = new Date(task.wait);
+        const waitDate = parseTaskwarriorDate(task.wait);
         return waitDate > now;
       }
 

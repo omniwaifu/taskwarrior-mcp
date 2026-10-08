@@ -1,4 +1,5 @@
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
+import { randomUUID } from "node:crypto";
 import { spawnSync } from "node:child_process";
 import { mkdtempSync, mkdirSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
@@ -8,12 +9,19 @@ import { addAnnotationHandler } from "../src/tools/addAnnotation/handler.ts";
 import { handleAddDependency } from "../src/tools/addDependency/handler.ts";
 import { handleAddTask } from "../src/tools/addTask/handler.ts";
 import { handleBatchModifyTasks } from "../src/tools/batchModifyTasks/handler.ts";
+import { handleGetBlockedTasks } from "../src/tools/getBlockedTasks/handler.ts";
+import { handleGetNextActions } from "../src/tools/getNextActions/handler.ts";
+import { handleGetProjectStatus } from "../src/tools/getProjectStatus/handler.ts";
+import { handleGetSomedayMaybe } from "../src/tools/getSomedayMaybe/handler.ts";
+import { handleGetWaitingFor } from "../src/tools/getWaitingFor/handler.ts";
+import { handleWeeklyReview } from "../src/tools/weeklyReview/handler.ts";
 import { handleListTasks } from "../src/tools/listTasks/handler.ts";
 import { modifyTaskHandler } from "../src/tools/modifyTask/handler.ts";
 import { removeAnnotationHandler } from "../src/tools/removeAnnotation/handler.ts";
 import { handleRemoveDependency } from "../src/tools/removeDependency/handler.ts";
 import {
   executeTaskWarriorCommandJson,
+  executeTaskWarriorCommandRaw,
   getTaskByUuid,
 } from "../src/utils/taskwarrior.ts";
 
@@ -284,6 +292,99 @@ integrationDescribe("TaskWarrior integration", () => {
     expect((updatedFirst.tags || []).sort()).toEqual(["needs-review", "work"]);
     expect(updatedSecond.description).toBe("Second batch task");
     expect(updatedSecond.tags).toEqual(["needs-review"]);
+  });
+
+  test("weekly review and task insights recognize compact overdue dates", async () => {
+    const overdue = await handleAddTask({ description: "Overdue task", due: "2000-01-01" });
+    await handleAddTask({ description: "Future task", due: "2099-01-01" });
+
+    expect(overdue.due).toMatch(/^20000101T\d{6}Z$/);
+    const review = await handleWeeklyReview();
+    expect(review.groups?.overdue).toEqual([overdue]);
+    expect(review.insights?.summary).toContain("1 overdue");
+
+    const next = await handleGetNextActions({});
+    expect(next.insights?.recommendations).toContain("1 tasks are overdue");
+  });
+
+  test("waiting reports include deferred tasks and exclude expired waits", async () => {
+    const waiting = await handleAddTask({
+      description: "Deferred task", project: "Deferred", wait: "2099-01-01",
+    });
+    await handleAddTask({ description: "Expired wait", wait: "2000-01-01" });
+    await handleAddTask({ description: "Ready task" });
+
+    const response = await handleGetWaitingFor({ group_by: "project" });
+    expect(response.tasks).toEqual([waiting]);
+    expect(response.groups?.Deferred).toEqual([waiting]);
+    expect(response.metadata.waiting).toBe(1);
+
+    const review = await handleWeeklyReview();
+    expect(review.groups?.waiting).toEqual([waiting]);
+    expect(review.groups?.projects_without_next_actions).toContain("Deferred");
+    expect(review.metadata).toMatchObject({ total: 3, waiting: 1, actionable: 2 });
+  });
+
+  test("next actions and project status exclude future waits and count them", async () => {
+    await handleAddTask({ description: "Deferred", project: "Deferred", wait: "2099-01-01" });
+    const ready = await handleAddTask({ description: "Ready", wait: "2000-01-01" });
+
+    const next = await handleGetNextActions({});
+    expect(next.tasks).toEqual([ready]);
+    expect(next.metadata).toMatchObject({ total: 2, actionable: 1, waiting: 1 });
+
+    const project = await handleGetProjectStatus({ project: "Deferred" });
+    expect(project.tasks).toEqual([]);
+    expect(project.metadata.actionable).toBe(0);
+  });
+
+  test("blocked reports optionally include waiting tasks within the project filter", async () => {
+    const waiting = await handleAddTask({
+      description: "Deferred", project: "Selected", wait: "2099-01-01",
+    });
+    await handleAddTask({ description: "Other deferred", project: "Other", wait: "2099-01-01" });
+    const withoutWaiting = await handleGetBlockedTasks({ project: "Selected" });
+    expect(withoutWaiting.tasks).toEqual([]);
+    expect(withoutWaiting.metadata).toMatchObject({ total: 0, blocked: 0, actionable: 0 });
+    const blocked = await handleGetBlockedTasks({ project: "Selected", include_waiting: true });
+    expect(blocked.tasks).toEqual([waiting]);
+    expect(blocked.metadata).toMatchObject({ total: 1, blocked: 1, actionable: 0 });
+  });
+
+  test("counts a task that is both blocked and waiting only once", async () => {
+    const blocker = await handleAddTask({ description: "Blocker" });
+    const waiting = await handleAddTask({
+      description: "Blocked and deferred", wait: "2099-01-01", depends: [blocker.uuid],
+    });
+    const blocked = await handleGetBlockedTasks({ include_waiting: true });
+    expect(blocked.tasks).toEqual([waiting]);
+    expect(blocked.metadata).toMatchObject({ total: 2, blocked: 1, actionable: 1 });
+  });
+
+  test("activity reports use compact modified and completion dates", async () => {
+    const fixture = join(sandbox.tempDir, "activity.json");
+    const oldDate = "20000101T000000Z";
+    const recentDate = new Date().toISOString().replace(/[-:]/g, "").replace(/\.\d{3}Z$/, "Z");
+    const tasks = [
+      { description: "Old project", project: "Stale", status: "pending", modified: oldDate },
+      { description: "Old pending", project: "Fresh", status: "pending", modified: oldDate },
+      { description: "Recently completed", project: "Fresh", status: "completed", modified: oldDate, end: recentDate },
+      { description: "Old someday", tags: ["someday"], status: "pending", modified: oldDate },
+      { description: "Recent someday", tags: ["someday"], status: "pending", modified: recentDate },
+    ].map(task => ({ uuid: randomUUID(), entry: oldDate, ...task }));
+    writeFileSync(fixture, JSON.stringify(tasks));
+    executeTaskWarriorCommandRaw(["import", fixture]);
+
+    const review = await handleWeeklyReview();
+    expect(review.groups?.stalled_projects).toEqual(["Stale"]);
+    const staleProject = await handleGetProjectStatus({ project: "Stale" });
+    expect(staleProject.insights?.recommendations?.some(item => item.includes("Stale project"))).toBe(true);
+    const freshProject = await handleGetProjectStatus({ project: "Fresh" });
+    expect(freshProject.insights?.recommendations?.some(item => item.includes("Stale project"))).toBe(false);
+
+    const someday = await handleGetSomedayMaybe({});
+    expect(someday.tasks.map(task => task.description)).toEqual(["Recent someday", "Old someday"]);
+    expect(someday.insights?.recommendations).toContain("⚠️ 1 items not reviewed in 90+ days");
   });
 
   test("keeps stdout free of diagnostics so the stdio transport stays parseable", () => {

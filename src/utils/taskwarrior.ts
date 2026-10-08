@@ -74,11 +74,11 @@ export function executeTaskWarriorCommandRaw(
 
       // Check for benign "no tasks" messages in stderr or stdout
       if (isNoMatchMessage(stderrMessage)) {
-        console.debug("[executeTaskWarriorCommandRaw] 'No matches' detected in stderr. Returning stderr content.");
+        console.error("[executeTaskWarriorCommandRaw] 'No matches' detected in stderr. Returning stderr content.");
         return stderrMessage; // Return the benign message for further processing
       }
       if (isNoMatchMessage(stdoutMessage)) {
-        console.debug("[executeTaskWarriorCommandRaw] 'No matches' detected in stdout. Returning stdout content.");
+        console.error("[executeTaskWarriorCommandRaw] 'No matches' detected in stdout. Returning stdout content.");
         return stdoutMessage; // Return the benign message
       }
 
