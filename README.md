@@ -145,3 +145,18 @@ Pull requests and pushes to `main` run these checks with Taskwarrior installed,
 validate and build the MCPB bundle, and audit the locked dependencies in a separate
 job. Locally, integration tests are skipped if `task` is missing; the command
 diagnostic regression tests still run without it.
+
+### Dependency security
+
+`bun audit` checks development dependencies as well as the server's dependencies.
+The `tmp` override selects the patched 0.2.x release for MCPB's older Inquirer /
+`external-editor` chain. A packaging-dependency regression test covers temporary
+file creation, editing, cleanup, and rejection of path traversal in file names.
+Remove this override once MCPB's dependency chain selects a patched version itself.
+
+As of October 8, 2026, the remaining audit finding is
+[GHSA-86w9-cpqp-85rv](https://github.com/advisories/GHSA-86w9-cpqp-85rv)
+in `node-forge` 1.4.0, used by MCPB's signing and verification tooling. No patched
+release is available yet. It is not bundled into the stdio server; this does not
+make the packaging tooling safe for processing untrusted signed bundles. The audit
+remains enabled and fails on this finding until an upstream fix is released.

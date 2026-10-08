@@ -15,7 +15,7 @@
     "dist"
   ],
   "scripts": {
-    "build": "esbuild src/index.ts --bundle --outfile=dist/index.js --platform=node --format=esm && shx chmod +x dist/*.js",
+    "build": "esbuild src/index.ts --bundle --outfile=dist/index.js --platform=node --format=esm && node -e \"require('node:fs').chmodSync('dist/index.js', 0o755)\"",
     "typecheck": "tsc --noEmit",
     "prepare": "bun run build && bun run typecheck",
     "start": "node dist/index.js",
@@ -32,7 +32,7 @@
     "mcpb:info": "mcpb info dist/taskwarrior-mcp.mcpb"
   },
   "dependencies": {
-    "@modelcontextprotocol/sdk": "^1.30.0",
+    "@modelcontextprotocol/sdk": "^1.32.1",
     "zod": "^3.25.76"
   },
   "devDependencies": {
@@ -44,8 +44,10 @@
     "eslint": "^10",
     "eslint-plugin-unused-imports": "^4.4.1",
     "globals": "^17",
-    "shx": "^0.4.0",
     "typescript": "^5.9.3",
     "typescript-eslint": "^8.67.0"
+  },
+  "overrides": {
+    "tmp": "^0.2.7"
   }
 }
