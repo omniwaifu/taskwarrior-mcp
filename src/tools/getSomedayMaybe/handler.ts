@@ -1,3 +1,4 @@
+import { parseTaskwarriorDate } from "../../utils/dates.js";
 import type { GetSomedayMaybeRequest } from "../../types/task.js";
 import { executeTaskWarriorCommandJson } from "../../utils/taskwarrior.js";
 import { type EnrichedResponse } from "../../utils/mcpResponseFormat.js";
@@ -22,7 +23,7 @@ export async function handleGetSomedayMaybe(
         return a.project.localeCompare(b.project);
       }
       if (a.modified && b.modified) {
-        return new Date(b.modified).getTime() - new Date(a.modified).getTime();
+        return parseTaskwarriorDate(b.modified).getTime() - parseTaskwarriorDate(a.modified).getTime();
       }
       return 0;
     });
@@ -42,7 +43,7 @@ export async function handleGetSomedayMaybe(
     const staleTasks = limitedTasks.filter(task => {
       const modified = (task as { modified?: string }).modified;
       if (!modified) return true;
-      return new Date(modified).getTime() < ninetyDaysAgo;
+      return parseTaskwarriorDate(modified).getTime() < ninetyDaysAgo;
     });
 
     const projectCount = Object.keys(byProject).length;

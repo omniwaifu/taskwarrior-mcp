@@ -1,3 +1,4 @@
+import { parseTaskwarriorDate } from "../../utils/dates.js";
 import type { GetNextActionsRequest } from "../../types/task.js";
 import { executeTaskWarriorCommandJson } from "../../utils/taskwarrior.js";
 import { generateInsights, type EnrichedResponse } from "../../utils/mcpResponseFormat.js";
@@ -19,7 +20,8 @@ export async function handleGetNextActions(
 
   try {
     // Build TaskWarrior filter
-    const filterArgs: string[] = ["status:pending"];
+    // Taskwarrior's pending filter excludes deferred tasks, even when export says pending.
+    const filterArgs: string[] = ["(", "status:pending", "or", "status:waiting", ")"];
 
     // Filter by context if specified
     if (args.context) {
@@ -44,8 +46,9 @@ export async function handleGetNextActions(
     const now = new Date();
     let actionableTasks = allTasks.filter(task => {
       // Skip if waiting
+      if (task.status === 'waiting') return false;
       if (task.wait) {
-        const waitDate = new Date(task.wait);
+        const waitDate = parseTaskwarriorDate(task.wait);
         if (waitDate > now) {
           return false;
         }
@@ -103,8 +106,9 @@ export async function handleGetNextActions(
     // Calculate metadata
     const blocked = allTasks.filter(t => t.depends && t.depends.length > 0).length;
     const waiting = allTasks.filter(t => {
+      if (t.status === 'waiting') return true;
       if (t.wait) {
-        const waitDate = new Date(t.wait);
+        const waitDate = parseTaskwarriorDate(t.wait);
         return waitDate > now;
       }
       return false;
