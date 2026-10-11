@@ -236,11 +236,15 @@ export async function getTaskByUuid(uuid: string): Promise<TaskWarriorTask> {
 }
 
 export function setTaskDependencies(uuid: string, dependencies: string[]): void {
-  executeTaskWarriorCommandRaw([uuid, "modify", "depends:"]);
+  const commandArgs = [uuid, "modify", "depends:"];
 
   if (dependencies.length > 0) {
-    executeTaskWarriorCommandRaw([uuid, "modify", `depends:${dependencies.join(",")}`]);
+    commandArgs.push(`depends:${dependencies.join(",")}`);
   }
+
+  // Taskwarrior adds depends values to the current list. Clear and replace in
+  // one invocation so a rejected replacement cannot leave the task unblocked.
+  executeTaskWarriorCommandRaw(commandArgs);
 }
 
 /**
