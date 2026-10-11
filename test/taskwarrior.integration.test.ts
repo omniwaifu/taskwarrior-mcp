@@ -214,6 +214,22 @@ integrationDescribe("TaskWarrior integration", () => {
     );
   });
 
+  test("preserves existing dependencies when adding a self-dependency fails", async () => {
+    const blocker = await handleAddTask({ description: "Existing blocker" });
+    const blocked = await handleAddTask({
+      description: "Blocked task",
+      depends: [blocker.uuid],
+    });
+
+    await expect(handleAddDependency({
+      task_uuid: blocked.uuid,
+      depends_on_uuid: blocked.uuid,
+    })).rejects.toThrow();
+
+    const unchanged = await getTaskByUuid(blocked.uuid);
+    expect(unchanged.depends).toEqual([blocker.uuid]);
+  });
+
   test("removes only the requested dependency", async () => {
     const blockerA = await handleAddTask({ description: "Blocker A" });
     const blockerB = await handleAddTask({ description: "Blocker B" });
@@ -228,6 +244,21 @@ integrationDescribe("TaskWarrior integration", () => {
     });
 
     expect(updatedTask.depends).toEqual([blockerB.uuid]);
+  });
+
+  test("removes the final dependency", async () => {
+    const blocker = await handleAddTask({ description: "Final blocker" });
+    const blocked = await handleAddTask({
+      description: "Blocked task",
+      depends: [blocker.uuid],
+    });
+
+    const updated = await handleRemoveDependency({
+      task_uuid: blocked.uuid,
+      depends_on_uuid: blocker.uuid,
+    });
+
+    expect(updated.depends || []).toEqual([]);
   });
 
   test("keeps the description intact when adding a hyphenated tag", async () => {
