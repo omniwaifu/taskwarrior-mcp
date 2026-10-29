@@ -49,6 +49,10 @@
   },
   "overrides": {
     "ip-address": "^10.7.4",
-    "tmp": "^0.2.7"
+    "tmp": "^0.2.7",
+    "body-parser": "^2.4.0",
+    "qs": "^6.17.1",
+    "fast-uri": "^3.1.9",
+    "node-forge": "^1.4.2"
   }
 }
