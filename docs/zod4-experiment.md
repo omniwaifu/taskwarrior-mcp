@@ -1,8 +1,8 @@
-# Zod 4 compatibility experiment
+# Zod 4 migration and request limits
 
-This branch is an experiment, not an adoption decision. The permanent Dependabot
-Zod major-version hold and all audit gates remain unchanged. Do not merge without
-reviewing the limits below and explicitly deciding to adopt the migration.
+Zod 4 and the request limits below are adopted. Dependabot allows Zod 4 updates
+and holds future majors (>=5) for compatibility review. All audit gates and
+unrelated version holds remain unchanged.
 
 ## Dependency boundary
 
@@ -17,7 +17,7 @@ The initial direct-Zod-only experiment passed the existing 43 tests, but retaine
 the SDK's old nested Zod. Existing tests alone were insufficient to establish
 schema behavior or dependency isolation.
 
-## Proposed input budgets
+## Input budgets
 
 | Array | Maximum items | Rationale / tradeoff |
 | --- | ---: | --- |
@@ -28,11 +28,11 @@ schema behavior or dependency isolation.
 | create_project_tree tasks | 100 | Bounds each request to one root plus at most 100 children. Splitting larger trees needs deliberate dependency coordination. |
 | Per-project-task dependency indices | 100 | At most the project task count; a request can still describe up to 10,000 index entries. Existing range checks remain in the handler. |
 
-These are proposed operational budgets, not measured Taskwarrior limits. Empty
+These are operational budgets, not measured Taskwarrior limits. Empty
 arrays retain their previous acceptance. No values are silently truncated.
 Returned/exported task arrays remain uncapped so existing data is not dropped.
 
-Zod 4.6.6 introduced collection-size checks before element parsing. The experiment
+Zod 4.6.6 introduced collection-size checks before element parsing. The server
 uses `.max()` on every request-array field, including nested fields. Regression
 tests accept each boundary and use throwing element getters to prove that both
 synchronous and asynchronous oversized parses reject before reading elements.
@@ -64,9 +64,9 @@ an unsupported major. Bun 1.3.5's `audit` has no documented production-only flag
 `bun audit --production` must not be treated as production-isolated evidence.
 Separately inspecting `npm ls --omit=dev --all --json` shows only Zod 4.6.7 in the
 production tree; querying npm's bulk-advisory endpoint for those installed
-versions returned no advisories during this experiment.
+versions returned no advisories during migration validation.
 
-## Remaining risks and decisions
+## Remaining risks
 
 - Limits apply after JSON decoding. The transport can still allocate an oversized
   serialized message; strings, unknown input fields, total payload size and

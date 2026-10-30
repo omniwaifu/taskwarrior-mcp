@@ -45,7 +45,7 @@ export const TaskWarriorTaskSchema = z.object({
 
 export type TaskWarriorTask = z.infer<typeof TaskWarriorTaskSchema>;
 
-// Experimental request budgets. Keep exported Taskwarrior data uncapped so
+// Request budgets. Keep exported Taskwarrior data uncapped so
 // existing databases are not silently filtered by an input-policy decision.
 export const INPUT_ARRAY_LIMITS = {
   tags: 64,
