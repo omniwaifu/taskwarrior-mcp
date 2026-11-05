@@ -57,6 +57,17 @@ jobs:
           test -f "$MCP_TEST_ENTRY"
           bun test test/mcp-schema.test.ts
 
+      - name: Set up Node 18 compatibility runtime
+        uses: actions/setup-node@v7
+        with:
+          node-version: "18.20.8"
+
+      - name: Smoke-test packaged Node 18 server
+        env:
+          MCP_TEST_COMMAND: node
+          MCP_TEST_ENTRY: ${{ runner.temp }}/taskwarrior-mcpb/server/index.js
+        run: bun test test/mcp-schema.test.ts
+
   audit:
     name: Dependency audit
     runs-on: ubuntu-latest
