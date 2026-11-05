@@ -48,6 +48,15 @@ jobs:
           bun run mcpb:pack
           bun run mcpb:info
 
+      - name: Smoke-test packaged Node server
+        env:
+          MCP_TEST_COMMAND: node
+          MCP_TEST_ENTRY: ${{ runner.temp }}/taskwarrior-mcpb/server/index.js
+        run: |
+          unzip -q dist/taskwarrior-mcp.mcpb -d "${RUNNER_TEMP}/taskwarrior-mcpb"
+          test -f "$MCP_TEST_ENTRY"
+          bun test test/mcp-schema.test.ts
+
   audit:
     name: Dependency audit
     runs-on: ubuntu-latest

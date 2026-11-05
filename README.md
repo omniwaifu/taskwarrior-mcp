@@ -142,8 +142,9 @@ bun run check      # Run typecheck, lint, tests, and build
 ```
 
 Pull requests and pushes to `main` run these checks with Taskwarrior installed,
-validate and build the MCPB bundle, and audit the locked dependencies in a separate
-job. Locally, integration tests are skipped if `task` is missing; the command
+validate and build the MCPB bundle, then run the stdio schema and task-operation
+smoke test against its extracted Node entry point. Dependencies are audited in a
+separate job. Locally, integration tests are skipped if `task` is missing; the command
 diagnostic regression tests still run without it.
 
 ### Dependency security
@@ -154,9 +155,19 @@ The `tmp` override selects the patched 0.2.x release for MCPB's older Inquirer /
 file creation, editing, cleanup, and rejection of path traversal in file names.
 Remove this override once MCPB's dependency chain selects a patched version itself.
 
-As of October 8, 2026, the remaining audit finding is
-[GHSA-86w9-cpqp-85rv](https://github.com/advisories/GHSA-86w9-cpqp-85rv)
-in `node-forge` 1.4.0, used by MCPB's signing and verification tooling. No patched
-release is available yet. It is not bundled into the stdio server; this does not
-make the packaging tooling safe for processing untrusted signed bundles. The audit
-remains enabled and fails on this finding until an upstream fix is released.
+As of November 5, 2026, the full audit reports two development-tooling findings:
+
+- [GHSA-mrhx-c7xc-m3w5](https://github.com/advisories/GHSA-mrhx-c7xc-m3w5)
+  in MCPB 2.1.2's required Zod 3.25.76. MCPB has not released Zod 4 support.
+  The server resolves Zod 4.6.7 and applies request-array limits; see
+  [the compatibility notes](docs/zod4-experiment.md) for coverage and limitations.
+- [GHSA-g3hv-75wg-m249](https://github.com/advisories/GHSA-g3hv-75wg-m249)
+  in minimatch 10.2.6, used by ESLint and TypeScript ESLint. The advisory requires
+  attacker-controlled glob patterns with optimizationLevel >= 2. The patched
+  11.0.1 is outside the callers' supported dependency ranges. minimatch is not
+  reachable from the server's production dependency graph.
+
+The earlier node-forge finding is patched by the 1.4.2 override. The audit remains
+enabled and fails on the current findings. Do not process untrusted packaging
+inputs or assume development tooling is safe because it is outside the runtime.
+No incompatible major overrides or audit suppressions are applied.
