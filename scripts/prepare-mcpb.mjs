@@ -1,4 +1,4 @@
-import { copyFileSync, existsSync, mkdirSync, rmSync } from "node:fs";
+import { copyFileSync, existsSync, mkdirSync, rmSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 
 const rootDir = process.cwd();
@@ -18,6 +18,9 @@ if (!existsSync(manifestPath)) {
 
 rmSync(bundleDir, { recursive: true, force: true });
 mkdirSync(serverDir, { recursive: true });
+
+// The bundled .js entry is ESM; Node 18 needs explicit package metadata.
+writeFileSync(join(bundleDir, "package.json"), JSON.stringify({ type: "module" }, null, 2) + "\n");
 
 copyFileSync(manifestPath, join(bundleDir, "manifest.json"));
 copyFileSync(bundleEntry, join(serverDir, "index.js"));
