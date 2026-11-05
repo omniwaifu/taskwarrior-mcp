@@ -79,6 +79,9 @@ bun run mcpb:pack
 
 That produces `dist/taskwarrior-mcp.mcpb`.
 
+The bundle includes explicit ES module metadata so its JavaScript entry loads on
+Node 18 as well as newer Node versions.
+
 The bundle packages the MCP server, but it does not bundle TaskWarrior itself. Users still need `task` installed on the host machine. For non-default setups, the MCPB manifest exposes optional `TASK_BIN` and `TASKRC` settings.
 
 ## Response Format
@@ -143,7 +146,8 @@ bun run check      # Run typecheck, lint, tests, and build
 
 Pull requests and pushes to `main` run these checks with Taskwarrior installed,
 validate and build the MCPB bundle, then run the stdio schema and task-operation
-smoke test against its extracted Node entry point. Dependencies are audited in a
+smoke test against its extracted entry point on Node 24.22.1 and Node 18.20.8
+on Linux. Build and lint tooling stay on Node 24. Dependencies are audited in a
 separate job. Locally, integration tests are skipped if `task` is missing; the command
 diagnostic regression tests still run without it.
 
