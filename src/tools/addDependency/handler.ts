@@ -11,22 +11,17 @@ import {
 export async function handleAddDependency(
   args: AddDependencyRequest,
 ): Promise<TaskWarriorTask> {
-  console.error(`addDependency called with:`, args);
 
-  try {
-    const task = await getTaskByUuid(args.task_uuid);
-    const currentDepends = task.depends || [];
+  const task = await getTaskByUuid(args.task_uuid);
+  const currentDepends = task.depends || [];
 
-    if (currentDepends.includes(args.depends_on_uuid)) {
-      return task;
-    }
-
-    setTaskDependencies(args.task_uuid, [...currentDepends, args.depends_on_uuid]);
-
-    // Return the modified task
-    return await getTaskByUuid(args.task_uuid);
-  } catch (error: unknown) {
-    console.error(`Error in addDependency handler:`, error);
-    throw error;
+  if (currentDepends.includes(args.depends_on_uuid)) {
+    return task;
   }
+
+  await setTaskDependencies(args.task_uuid, [...currentDepends, args.depends_on_uuid]);
+
+  // Return the modified task
+  return await getTaskByUuid(args.task_uuid);
+
 }

@@ -1,3 +1,9 @@
+import { startTaskHandler } from "../src/tools/startTask/handler.ts";
+import { stopTaskHandler } from "../src/tools/stopTask/handler.ts";
+import { markTaskDoneHandler } from "../src/tools/markTaskDone/handler.ts";
+import { handleGetRecurringTasks } from "../src/tools/getRecurringTasks/handler.ts";
+import { deleteTaskHandler } from "../src/tools/deleteTask/handler.ts";
+import { handleCreateProjectTree } from "../src/tools/createProjectTree/handler.ts";
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import { randomUUID } from "node:crypto";
 import { spawnSync } from "node:child_process";
@@ -30,6 +36,7 @@ interface TaskwarriorSandbox {
   taskrc: string;
   previousTaskrc?: string;
   previousTaskBin?: string;
+  previousTaskdata?: string;
 }
 
 const hasTaskwarrior =
@@ -57,6 +64,7 @@ function createSandbox(): TaskwarriorSandbox {
       "confirmation=no",
       "verbose=nothing",
       "json.array=on",
+      "hooks=off",
       "",
     ].join("\n"),
   );
@@ -66,10 +74,13 @@ function createSandbox(): TaskwarriorSandbox {
     taskrc,
     previousTaskrc: process.env.TASKRC,
     previousTaskBin: process.env.TASK_BIN,
+    previousTaskdata: process.env.TASKDATA,
   };
 }
 
 function restoreSandbox(sandbox: TaskwarriorSandbox): void {
+  if (sandbox.previousTaskdata === undefined) delete process.env.TASKDATA;
+  else process.env.TASKDATA = sandbox.previousTaskdata;
   if (sandbox.previousTaskrc === undefined) {
     delete process.env.TASKRC;
   } else {
@@ -91,6 +102,7 @@ integrationDescribe("TaskWarrior integration", () => {
   beforeEach(() => {
     sandbox = createSandbox();
     process.env.TASKRC = sandbox.taskrc;
+    process.env.TASKDATA = join(sandbox.tempDir, "data");
     delete process.env.TASK_BIN;
   });
 
@@ -404,7 +416,7 @@ integrationDescribe("TaskWarrior integration", () => {
       { description: "Recent someday", tags: ["someday"], status: "pending", modified: recentDate },
     ].map(task => ({ uuid: randomUUID(), entry: oldDate, ...task }));
     writeFileSync(fixture, JSON.stringify(tasks));
-    executeTaskWarriorCommandRaw(["import", fixture]);
+    await executeTaskWarriorCommandRaw(["import", fixture]);
 
     const review = await handleWeeklyReview();
     expect(review.groups?.stalled_projects).toEqual(["Stale"]);
@@ -445,4 +457,161 @@ integrationDescribe("TaskWarrior integration", () => {
       ]),
     ).rejects.toThrow();
   });
+  test("GTD attributes preserve the description on a fresh configuration", async () => {
+    const task = await handleAddTask({ description: "Keep this description", context: "@home", energy: "H" });
+    expect(task).toMatchObject({ description: "Keep this description", context: "@home", energy: "H" });
+    expect((await handleGetNextActions({ context: "@home", energy_level: "high" })).tasks).toEqual([task]);
+    const modified = await modifyTaskHandler({ uuid: task.uuid, context: "@work", energy: "L" });
+    expect(modified.status).toBe("success");
+    expect(await getTaskByUuid(task.uuid)).toMatchObject({ description: task.description, context: "@work", energy: "L" });
+  });
+
+  test("deletion confirms deleted status and does not mistake retained history for failure", async () => {
+    const task = await handleAddTask({ description: "Disposable" });
+    const deleted = await deleteTaskHandler({ uuid: task.uuid, skipConfirmation: true });
+    expect(deleted.status).toBe("success");
+    expect((await getTaskByUuid(task.uuid)).status).toBe("deleted");
+  });
+
+  test("project trees work in quiet mode and use a separate hierarchy attribute", async () => {
+    const tree = await handleCreateProjectTree({ project_name: "Tree", project_description: "Root", tasks: [
+      { description: "First", context: "@home" }, { description: "Second", depends_on_indices: [0] },
+    ] });
+    expect(tree.status).toBe("success");
+    expect(tree.tasks).toHaveLength(2);
+    const tasks = await handleListTasks({ project: "Tree" });
+    const first = tasks.find(task => task.description === "First")!;
+    const second = tasks.find(task => task.description === "Second")!;
+    expect(first.mcp_parent).toBe(tree.project_uuid);
+    expect(first.parent).toBeUndefined();
+    expect(second.depends).toEqual([first.uuid]);
+    expect((await handleGetNextActions({})).tasks).toEqual([first]);
+  });
+
+  test("project graph errors are rejected before any writes", async () => {
+    for (const dependencies of [[[0]], [[1], [0]], [[3]]] as number[][][]) {
+      await expect(handleCreateProjectTree({ project_name: "Invalid", project_description: "Root", tasks: dependencies.map((depends_on_indices, i) => ({ description: String(i), depends_on_indices })) })).rejects.toThrow();
+      expect(await handleListTasks({})).toEqual([]);
+    }
+  });
+
+  test("export preserves Unicode and custom priority values", async () => {
+    await executeTaskWarriorCommandRaw(["add", "description:Unicode", "project:研究", "tags:café"]);
+    expect((await handleListTasks({}))[0]).toMatchObject({ project: "研究", tags: ["café"] });
+  });
+
+  test("clears dates and GTD attributes explicitly, including batch changes", async () => {
+    const task = await handleAddTask({ description: "Clear me", due: "2099-01-01", scheduled: "2099-01-01", context: "@home", energy: "H" });
+    expect((await modifyTaskHandler({ uuid: task.uuid, due: "", scheduled: "", context: "", energy: "" })).status).toBe("success");
+    const cleared = await getTaskByUuid(task.uuid);
+    for (const field of ["due", "scheduled", "context", "energy"]) expect(cleared[field]).toBeUndefined();
+    await handleBatchModifyTasks({ uuids: [task.uuid], modifications: { due: "2099-01-01" } });
+    await handleBatchModifyTasks({ uuids: [task.uuid], modifications: { due: "" } });
+    expect((await getTaskByUuid(task.uuid)).due).toBeUndefined();
+  });
+
+  test("failed dependency changes do not partially apply other modifications", async () => {
+    const task = await handleAddTask({ description: "Original" });
+    expect((await modifyTaskHandler({ uuid: task.uuid, description: "Changed", addDepends: [task.uuid] })).status).toBe("error");
+    expect((await getTaskByUuid(task.uuid)).description).toBe("Original");
+  });
+
+  test("reports consistently exclude scheduled, someday, root, and blocked tasks", async () => {
+    const ready = await handleAddTask({ description: "Ready", project: "Actions" });
+    await handleAddTask({ description: "Later", project: "Actions", scheduled: "2099-01-01" });
+    await handleAddTask({ description: "Someday", project: "Actions", tags: ["someday"] });
+    await handleAddTask({ description: "Root", project: "Actions", tags: ["project_root"] });
+    await handleAddTask({ description: "Blocked", project: "Actions", depends: [ready.uuid] });
+    expect((await handleGetNextActions({})).tasks.map(task => (task as { uuid: string }).uuid)).toEqual([ready.uuid]);
+    expect((await handleGetProjectStatus({ project: "Actions" })).tasks.map(task => (task as { uuid: string }).uuid)).toEqual([ready.uuid]);
+    expect((await handleWeeklyReview()).metadata.actionable).toBe(1);
+  });
+
+  test("grouping supports names inherited by ordinary objects", async () => {
+    const someday = await handleAddTask({ description: "Someday", project: "constructor", tags: ["someday"] });
+    const waiting = await handleAddTask({ description: "Waiting", project: "__proto__", wait: "2099-01-01" });
+    expect((await handleGetSomedayMaybe({})).groups?.constructor).toEqual([someday]);
+    expect((await handleGetWaitingFor({ group_by: "project" })).groups?.__proto__).toEqual([waiting]);
+  });
+
+  test("nonexistent tasks fail batch operations instead of reporting success", async () => {
+    const result = await handleBatchModifyTasks({ uuids: [randomUUID()], modifications: { project: "Missing" } });
+    expect(result.status).toBe("error");
+    expect(result.metadata.actionable).toBe(0);
+  });
+
+  test("completed dependencies stop blocking reports even when their UUIDs remain stored", async () => {
+    const blocker = await handleAddTask({ description: "Blocker" });
+    const dependent = await handleAddTask({ description: "Dependent", project: "DependencyStatus", depends: [blocker.uuid] });
+    await executeTaskWarriorCommandRaw([blocker.uuid, "done"]);
+    expect((await getTaskByUuid(dependent.uuid)).depends).toContain(blocker.uuid);
+    expect((await handleGetNextActions({})).tasks.map(task => (task as { uuid: string }).uuid)).toContain(dependent.uuid);
+    expect((await handleGetBlockedTasks({})).tasks).toEqual([]);
+    expect((await handleGetProjectStatus({ project: "DependencyStatus" })).metadata.actionable).toBe(1);
+    expect((await handleWeeklyReview()).metadata.actionable).toBe(1);
+  });
+
+  test("new recurring tasks report the template even when export generates instances", async () => {
+    const habit = await handleAddTask({ description: "Daily habit", due: "tomorrow", recur: "daily" });
+    expect(habit.status).toBe("recurring");
+    const report = await handleGetRecurringTasks({ frequency: "all", include_completed: false });
+    expect(report.tasks).toHaveLength(1);
+    expect(report.tasks[0]).toMatchObject({ uuid: habit.uuid, habit_stats: { evaluated_instances: 0, current_streak: 0 } });
+    expect(report.insights?.recommendations?.some(line => line.includes("broken streaks"))).not.toBe(true);
+    expect((await handleWeeklyReview()).groups?.habits_with_broken_streaks).toEqual([]);
+  });
+
+  test("include_completed includes historical templates rather than completed child instances", async () => {
+    const templateUuid = randomUUID();
+    const instanceUuid = randomUUID();
+    const fixture = join(sandbox.tempDir, "history.json");
+    writeFileSync(fixture, JSON.stringify([
+      { uuid: templateUuid, description: "Completed habit", status: "completed", entry: "20200101T000000Z", end: "20200103T000000Z", due: "20200101T000000Z", recur: "daily" },
+      { uuid: instanceUuid, description: "Completed occurrence", status: "completed", entry: "20200101T000000Z", end: "20200101T010000Z", due: "20200101T000000Z", parent: templateUuid },
+    ]));
+    await executeTaskWarriorCommandRaw(["import", fixture]);
+    expect((await handleGetRecurringTasks({ frequency: "all", include_completed: false })).tasks).toEqual([]);
+    const included = await handleGetRecurringTasks({ frequency: "all", include_completed: true });
+    expect(included.tasks).toHaveLength(1);
+    expect(included.tasks[0]).toMatchObject({ uuid: templateUuid, habit_stats: { completed_count: 1, completion_rate: 100 } });
+  });
+
+  test("project failures return the root UUID and previously completed work", async () => {
+    // Respect user-specified UDA value constraints, even with command-local type definitions.
+    const original = await Bun.file(sandbox.taskrc).text();
+    writeFileSync(sandbox.taskrc, original + "uda.context.values=@home\n");
+    const result = await handleCreateProjectTree({ project_name: "Partial", project_description: "Root", tasks: [{ description: "First" }, { description: "Rejected", context: "@unsupported" }] });
+    expect(result.status).toBe("error");
+    expect(result.project_uuid).toBeDefined();
+    expect(result.tasks).toHaveLength(1);
+    expect((await handleListTasks({ project: "Partial" })).map(task => task.description).sort()).toEqual(["First", "Root"]);
+  });
+
+  test("starting, stopping, and completing are idempotent and verify the resulting state", async () => {
+    const task = await handleAddTask({ description: "Lifecycle" });
+    expect((await startTaskHandler({ uuid: task.uuid })).status).toBe("success");
+    const start = (await getTaskByUuid(task.uuid)).start;
+    expect(start).toBeDefined();
+    expect((await startTaskHandler({ uuid: task.uuid })).status).toBe("success");
+    expect((await getTaskByUuid(task.uuid)).start).toBe(start);
+    expect((await stopTaskHandler({ uuid: task.uuid })).status).toBe("success");
+    expect((await stopTaskHandler({ uuid: task.uuid })).status).toBe("success");
+    expect((await getTaskByUuid(task.uuid)).start).toBeUndefined();
+    expect((await markTaskDoneHandler({ uuid: task.uuid })).status).toBe("success");
+    expect((await markTaskDoneHandler({ uuid: task.uuid })).status).toBe("success");
+    expect((await getTaskByUuid(task.uuid)).status).toBe("completed");
+  });
+
+  test("annotation contents stay literal, including newlines and attribute-like text", async () => {
+    const task = await handleAddTask({ description: "Unchanged" });
+    const annotation = "project:other\nsecond line";
+    expect((await addAnnotationHandler({ uuid: task.uuid, annotation })).status).toBe("success");
+    const annotated = await getTaskByUuid(task.uuid);
+    expect(annotated.description).toBe("Unchanged");
+    expect(annotated.project).toBeUndefined();
+    expect(annotated.annotations?.some(note => note.description === annotation)).toBe(true);
+    expect((await removeAnnotationHandler({ uuid: task.uuid, annotation })).status).toBe("success");
+    expect((await getTaskByUuid(task.uuid)).annotations ?? []).toEqual([]);
+  });
+
 });

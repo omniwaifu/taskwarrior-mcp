@@ -14,12 +14,9 @@ export const TaskWarriorTaskSchema = z.object({
   start: z.string().optional(),
   due: z.string().optional(),
   end: z.string().optional(), // Completion date
-  priority: z.enum(["H", "M", "L"]).optional(),
-  project: z
-    .string()
-    .regex(/^[a-zA-Z0-9 ._-]+$/)
-    .optional(),
-  tags: z.array(z.string().regex(/^[a-zA-Z0-9_-]+$/)).optional(),
+  priority: z.string().optional(),
+  project: z.string().optional(),
+  tags: z.array(z.string()).optional(),
   annotations: z
     .array(
       z.object({

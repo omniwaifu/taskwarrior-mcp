@@ -17,6 +17,7 @@ const hasTask = spawnSync("task", ["--version"], { stdio: "ignore" }).status ===
   writeFileSync(taskrc, `data.location=${join(directory, "data")}\nconfirmation=no\nverbose=nothing\njson.array=on\n`);
   const env = Object.fromEntries(Object.entries(process.env).filter(([, value]) => value !== undefined)) as Record<string, string>;
   env.TASKRC = taskrc;
+  env.TASKDATA = join(directory, "data");
   env.TASK_BIN = "task";
   const transport = new StdioClientTransport({
     command: process.env.MCP_TEST_COMMAND ?? process.execPath,
@@ -71,6 +72,13 @@ const hasTask = spawnSync("task", ["--version"], { stdio: "ignore" }).status ===
     const final = spawnSync("task", ["export"], { env, encoding: "utf8" });
     expect(final.status).toBe(0);
     expect(JSON.parse(final.stdout)[0].tags).toEqual(["next"]);
+    const missing = await client.callTool({ name: "modify_task", arguments: { uuid: "00000000-0000-0000-0000-000000000000", project: "Missing" } });
+    expect(missing.isError).toBe(true);
+    const deleted = await client.callTool({ name: "delete_task", arguments: { uuid: tasks[0].uuid, skipConfirmation: true } });
+    expect(deleted.isError).not.toBe(true);
+    const afterDelete = spawnSync("task", [tasks[0].uuid, "export"], { env, encoding: "utf8" });
+    expect(JSON.parse(afterDelete.stdout)[0].status).toBe("deleted");
+
   } catch (error) {
     console.error(diagnostics);
     throw error;

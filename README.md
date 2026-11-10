@@ -38,14 +38,14 @@ MCP server that wraps TaskWarrior command-line tool. Provides 22 tools for task 
 
 ## Requirements
 
-- Node.js 18+ for runtime
+- Node.js 22+ for runtime (use a supported LTS release)
 - Bun 1.3+ for development workflows
 - TaskWarrior installed and available as `task`
 
 ## Install
 
 ```bash
-bun install
+bun install --frozen-lockfile --ignore-scripts
 bun run build
 ```
 
@@ -79,8 +79,8 @@ bun run mcpb:pack
 
 That produces `dist/taskwarrior-mcp.mcpb`.
 
-The bundle includes explicit ES module metadata so its JavaScript entry loads on
-Node 18 as well as newer Node versions.
+The bundle includes explicit ES module metadata and targets Node 22 or newer.
+Node 18 and 20 are no longer supported.
 
 The bundle packages the MCP server, but it does not bundle TaskWarrior itself. Users still need `task` installed on the host machine. For non-default setups, the MCPB manifest exposes optional `TASK_BIN` and `TASKRC` settings.
 
@@ -115,7 +115,7 @@ GTD tools return enriched responses with:
 - `context` - GTD context (@home, @work, @phone)
 - `energy` - Energy level required (H/M/L)
 - `depends` - Array of task UUIDs this depends on
-- `parent` - Parent task UUID
+- `parent` (write requests) - Project parent UUID, stored as the `mcp_parent` user-defined attribute. Taskwarrior’s exported `parent` field is reserved for recurrence templates.
 - `recur` - Recurrence pattern (daily, weekly, monthly, etc.)
 - `tags` - Letters, digits, `_` and `-`. Tag writes use Taskwarrior's `tags:` attribute and tag
   filters use `tags.has:`, because the `+tag` shorthand rejects hyphens and silently rewrites the
@@ -132,7 +132,60 @@ Set `recur` with `due` to create habits:
 }
 ```
 
-TaskWarrior creates template task (status:recurring) that generates instances. Use `get_recurring_tasks` to see completion rates and streaks.
+TaskWarrior creates a template task (status:recurring) that generates instances.
+`get_recurring_tasks` calculates statistics from exported instances and their due dates,
+not the template mask. Future unfinished instances do not reduce completion rates or
+break streaks. An unfinished or deleted occurrence counts as missed once its due time
+passes. Completed occurrences count even when completed early. `total_instances`
+includes future occurrences; `evaluated_instances` is the completion-rate denominator.
+Averages include only habits with evaluated occurrences. Missing/purged history cannot be reconstructed. `include_completed:true` additionally
+includes completed templates; ordinary completed instances remain statistics, not templates.
+
+## Configuration and write behavior
+
+`context`, `energy`, and `mcp_parent` are string user-defined attributes (UDAs).
+The server supplies their type definitions as command-local overrides, so fresh
+Taskwarrior installations store them correctly without changing your taskrc.
+Other UDA settings, including configured allowed values, still apply. Energy filters
+use `H`, `M`, and `L`. To display these fields in your own CLI reports, add the same
+UDA definitions to your taskrc and configure the report columns:
+
+```ini
+uda.context.type=string
+uda.energy.type=string
+uda.mcp_parent.type=string
+```
+
+Use an empty string in `modify_task` or `batch_modify_tasks` to clear dates,
+context, energy, or project. Omitted fields remain unchanged. Taskwarrior validates
+field combinations; a failed dependency replacement does not apply the other
+modifications in that same command.
+
+Project creation validates dependency indices and cycles before writing. It uses
+UUID output, so `verbose=nothing` works. Project and batch operations are not
+transactions: failures return MCP `isError:true` and identify completed work where
+available. Inspect returned UUIDs before retrying; do not blindly recreate tasks.
+The project root uses `project_root`, and children use `mcp_parent`, leaving native
+recurrence relationships intact.
+
+Tool calls are serialized within one server to prevent its read-modify-write
+operations from interleaving. Other Taskwarrior processes can still edit the same
+records concurrently. Subprocesses run without a shell, asynchronously, with closed
+stdin, a 10 MiB output limit and a 30-second timeout. Set `TASK_TIMEOUT_MS` to an
+integer from 1 to 300000 to adjust the timeout. Interactive confirmations are not
+possible; `delete_task` supports `skipConfirmation:true` for an authorized deletion.
+
+The stdio transport caps buffered input at 1 MiB; validation also caps combined
+input elements at 25,000 and the server queues at most 100 tool calls. Task contents
+and full command arguments are not routinely logged. Export validation returns an
+error for malformed records rather than silently omitting tasks. Existing Unicode
+projects/tags and custom priority values are preserved in exports; write schemas
+retain their documented restrictions.
+
+Next-action and project/weekly-review counts exclude future scheduled/waiting tasks,
+someday items, project roots, and unresolved dependencies. Completed/deleted
+dependencies do not block tasks. Time filtering uses an explicit numeric `complexity`
+value in minutes when present; urgency is not treated as a duration estimate.
 
 ## Development
 
@@ -146,12 +199,17 @@ bun run check      # Run typecheck, lint, tests, and build
 
 Pull requests and pushes to `main` run these checks with Taskwarrior installed,
 validate and build the MCPB bundle, then run the stdio schema and task-operation
-smoke test against its extracted entry point on Node 24.22.1 and Node 18.20.8
+smoke test against its extracted entry point on Node 24.22.1 and Node 22
 on Linux. Build and lint tooling stay on Node 24. Dependencies are audited in a
 separate job. Locally, integration tests are skipped if `task` is missing; the command
 diagnostic regression tests still run without it.
 
 ### Dependency security
+
+Before installing dependencies, review `package.json`, `bun.lock`, registry metadata,
+and current advisories. Use `bun install --frozen-lockfile --ignore-scripts`; builds
+are explicit commands. Integrity hashes establish artifact consistency, not trust
+in package contents.
 
 `bun audit` checks development dependencies as well as the server's dependencies.
 The `tmp` override selects the patched 0.2.x release for MCPB's older Inquirer /

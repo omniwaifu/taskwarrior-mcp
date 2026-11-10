@@ -1,264 +1,78 @@
-import { execFileSync, ExecFileSyncOptionsWithStringEncoding } from "child_process";
-import { TaskWarriorTask, TaskWarriorTaskSchema } from "../types/task.js"; // Assuming TaskWarriorTaskSchema is the Zod schema
+import { execFile, type ExecFileOptionsWithStringEncoding } from "node:child_process";
+import { TaskWarriorTaskSchema, type TaskWarriorTask } from "../types/task.js";
 import { isValidUuid } from "./uuid.js";
 
-const defaultExecOptions: ExecFileSyncOptionsWithStringEncoding = {
-  encoding: "utf-8",
-  maxBuffer: 1024 * 1024 * 10, // 10 MB
-  stdio: "pipe", // Inherit stdio to see errors, but pipe output for capture
-};
+const NO_MATCH = /^(?:No matches|No tasks specified|No tasks found|No tasks|No pending tasks)\.?$/i;
 
-// Type for error objects from execFileSync which might have stderr/stdout
-interface ExecFileSyncError extends Error {
-  stderr?: Buffer | string;
-  stdout?: Buffer | string;
-  status?: number; // execFileSync errors often have a status code
-}
-
-function isNoMatchMessage(message: string): boolean {
-  return /No matches|No tasks specified/i.test(message);
-}
-
-function getTaskBinary(): string {
-  return process.env.TASK_BIN?.trim() || "task";
-}
-
-function formatTaskCommand(commandArgs: string[]): string {
-  return [getTaskBinary(), ...commandArgs].map((arg) => JSON.stringify(arg)).join(" ");
-}
-
-/**
- * Executes a raw Taskwarrior command.
- * @param commandArgs Array of arguments for the task command (e.g., ["status:pending", "export"])
- * @param options execFileSync options
- * @returns The raw string output from the command.
- */
-export function executeTaskWarriorCommandRaw(
+/** Run without a shell; bound duration and output, and leave the event loop responsive. */
+export async function executeTaskWarriorCommandRaw(
   commandArgs: string[],
-  options?: ExecFileSyncOptionsWithStringEncoding,
-): string {
-  const finalOptions = {
-    ...defaultExecOptions,
-    ...options,
-    env: {
-      ...process.env,
-      ...(options?.env || {}),
-    },
-  };
-  const renderedCommand = formatTaskCommand(commandArgs);
-
-  try {
-    console.error(`Executing: ${renderedCommand}`);
-    return execFileSync(getTaskBinary(), commandArgs, finalOptions).trim();
-  } catch (error: unknown) {
-    console.error(`Error executing TaskWarrior command: ${renderedCommand}`);
-    let stderrMessage = "";
-    let stdoutMessage = ""; // stdout might contain info even on error for some commands
-    let errorMessage = "TaskWarrior command failed";
-
-    if (typeof error === "object" && error !== null) {
-      const execError = error as ExecFileSyncError;
-
-      if (execError.stderr) {
-        stderrMessage = Buffer.isBuffer(execError.stderr)
-          ? execError.stderr.toString().trim()
-          : String(execError.stderr).trim();
-        console.error(`TaskWarrior stderr: ${stderrMessage}`);
-      }
-      if (execError.stdout) { // Capture stdout on error as well
-        stdoutMessage = Buffer.isBuffer(execError.stdout)
-          ? execError.stdout.toString().trim()
-          : String(execError.stdout).trim();
-        console.error(`TaskWarrior stdout (on error): ${stdoutMessage}`);
-      }
-
-      // Check for benign "no tasks" messages in stderr or stdout
-      if (isNoMatchMessage(stderrMessage)) {
-        console.error("[executeTaskWarriorCommandRaw] 'No matches' detected in stderr. Returning stderr content.");
-        return stderrMessage; // Return the benign message for further processing
-      }
-      if (isNoMatchMessage(stdoutMessage)) {
-        console.error("[executeTaskWarriorCommandRaw] 'No matches' detected in stdout. Returning stdout content.");
-        return stdoutMessage; // Return the benign message
-      }
-
-      if (error instanceof Error && error.message) {
-        errorMessage = error.message;
-      } else if (stderrMessage) {
-        errorMessage = stderrMessage;
-      }
-    }
-    // If it wasn't a benign "no matches" message, throw the error.
-    throw new Error(
-      `${errorMessage}` + (stderrMessage ? ` (stderr: ${stderrMessage})` : ""),
-    );
+  options?: ExecFileOptionsWithStringEncoding,
+): Promise<string> {
+  const configuredTimeout = Number(process.env.TASK_TIMEOUT_MS ?? 30_000);
+  if (!Number.isInteger(configuredTimeout) || configuredTimeout < 1 || configuredTimeout > 300_000) {
+    throw new Error("TASK_TIMEOUT_MS must be an integer between 1 and 300000.");
   }
+  return new Promise((resolve, reject) => {
+    const child = execFile(process.env.TASK_BIN?.trim() || "task", commandArgs, {
+      encoding: "utf8", maxBuffer: 10 * 1024 * 1024,
+      timeout: configuredTimeout, killSignal: "SIGKILL",
+      ...options, env: { ...process.env, ...options?.env },
+    }, (error, stdout, stderr) => {
+      if (!error) return resolve(stdout.trim());
+      // Do not include argv, task contents, or stack traces in routine diagnostics.
+      // Details go only to the requesting client, never to the server's logs.
+      const message = error.killed ? "Taskwarrior command timed out or exceeded its output limit."
+        : stderr.trim() || stdout.trim() || `Taskwarrior command failed (${String(error.code)}).`;
+      reject(new Error(message));
+    });
+    // Taskwarrior runs noninteractively; prompts must see EOF rather than hang.
+    child.stdin?.end();
+  });
 }
 
-/**
- * Executes a Taskwarrior command and expects a JSON array of tasks as output.
- * Parses the JSON and validates it against the TaskWarriorTaskSchema.
- * @param commandArgs Array of arguments for the task command (should include "export")
- * @returns Array of validated TaskWarriorTask objects.
- */
-export async function executeTaskWarriorCommandJson(
-  args: string[],
-): Promise<TaskWarriorTask[]> {
+/** Export parsing is all-or-nothing: incomplete results must never look like a complete list. */
+export function parseTaskwarriorExport(output: string): TaskWarriorTask[] {
+  if (NO_MATCH.test(output.trim())) return [];
+  let values: unknown;
   try {
-    const commandArgs = args.some((arg) => arg.toLowerCase() === "export")
-      ? [...args]
-      : [...args, "export"];
-
-    const rawOutput = executeTaskWarriorCommandRaw(commandArgs);
-
-    // Handle known "no tasks" messages from Taskwarrior
-    const trimmedOutput = rawOutput.trim();
-    if (
-      trimmedOutput === "No matches." ||
-      trimmedOutput === "No tasks found." ||
-      trimmedOutput === "No tasks." ||
-      trimmedOutput === "No pending tasks." ||
-      trimmedOutput === "" // Handles completely empty output
-    ) {
-      console.error(`executeTaskWarriorCommandJson - Received "No matches" equivalent: "${trimmedOutput}". Returning empty array.`);
-      return [];
+    values = JSON.parse(output);
+  } catch {
+    throw new Error("Taskwarrior returned non-JSON output for export command.");
+  }
+  if (!Array.isArray(values)) throw new Error("Taskwarrior export must be a JSON array.");
+  return values.map((value: unknown, index: number) => {
+    const result = TaskWarriorTaskSchema.safeParse(value);
+    if (!result.success) {
+      const fields = result.error.issues.map(issue => issue.path.join(".")).join(", ");
+      throw new Error(`Invalid Taskwarrior export at index ${index} (fields: ${fields}). No partial results returned.`);
     }
+    return result.data;
+  });
+}
 
-    // Try to parse the entire output as a JSON array first
-    try {
-      // First attempt: try to parse the whole output as a single JSON array
-      const parsedArray = JSON.parse(trimmedOutput);
-      if (Array.isArray(parsedArray)) {
-        console.error(`Successfully parsed output as a complete JSON array with ${parsedArray.length} items`);
-        
-        // Validate all objects in the array
-        const validatedObjects = [];
-        for (let i = 0; i < parsedArray.length; i++) {
-          try {
-            // The schema now allows passthrough of unknown fields
-            const validatedObj = TaskWarriorTaskSchema.parse(parsedArray[i]);
-            validatedObjects.push(validatedObj);
-          } catch (validationError) {
-            console.error(`Validation failed for task in array at index ${i}:`, 
-              JSON.stringify(parsedArray[i]).substring(0, 100), validationError);
-            // Skip invalid objects but continue with valid ones
-          }
-        }
-        return validatedObjects;
-      }
-    } catch {
-      console.error("Failed to parse output as a complete JSON array, trying line by line parsing");
-    }
-
-    // Fallback: If parsing the whole output failed, try parsing each line as a separate JSON object
-    const validObjects = [];
-    const lines = trimmedOutput.split("\n");
-    
-    for (const line of lines) {
-      if (!line.trim() || line.trim() === '[' || line.trim() === ']') continue; // Skip empty lines and array brackets
-      
-      // Remove any trailing commas (common in pretty-printed JSON arrays)
-      const cleanLine = line.trim().replace(/,\s*$/, '');
-      
-      try {
-        const parsedObj = JSON.parse(cleanLine);
-        validObjects.push(parsedObj);
-      } catch (parseError) {
-        console.error(`Failed to parse line: ${cleanLine.substring(0, 50)}... - Skipping this line and continuing.`, parseError);
-      }
-    }
-    
-    // If we couldn't parse any valid objects, return empty array
-    if (validObjects.length === 0) {
-      throw new Error(
-        `TaskWarrior returned non-JSON output for export command: ${trimmedOutput.substring(0, 200)}`,
-      );
-    }
-
-    // Validate each object with Zod, skipping any that fail validation
-    const validatedObjects = [];
-    
-    for (let i = 0; i < validObjects.length; i++) {
-      const obj = validObjects[i];
-      try {
-        // The schema now allows passthrough of unknown fields
-        const validatedObj = TaskWarriorTaskSchema.parse(obj);
-        validatedObjects.push(validatedObj);
-      } catch (validationError) {
-        console.error(`Validation failed for task object at index ${i}:`, 
-          JSON.stringify(obj).substring(0, 100), validationError);
-        // Skip this object but continue with others - don't throw
-      }
-    }
-    
-    return validatedObjects;
+export async function executeTaskWarriorCommandJson(args: string[]): Promise<TaskWarriorTask[]> {
+  const commandArgs = ["rc.json.array=on", "rc.verbose=nothing", ...args];
+  if (!args.some(arg => arg.toLowerCase() === "export")) commandArgs.push("export");
+  try {
+    return parseTaskwarriorExport(await executeTaskWarriorCommandRaw(commandArgs));
   } catch (error) {
-    // Special case for "No matches" that might have leaked through error handling
-    if (error instanceof Error) {
-      if (
-        error.message.includes("No matches") || 
-        error.message.includes("No tasks found") ||
-        error.message.includes("No tasks") ||
-        error.message.includes("No pending tasks")
-      ) {
-        console.error(`executeTaskWarriorCommandJson - Caught error with "No matches" pattern: "${error.message}". Returning empty array.`);
-        return [];
-      }
-    }
-    
-    console.error("Error processing TaskWarrior JSON output:", error);
+    // Only exact, known empty-query messages are benign, and only for reads.
+    if (error instanceof Error && NO_MATCH.test(error.message.trim())) return [];
     throw error;
   }
 }
 
-/**
- * Retrieves a single task by its UUID.
- * Throws an error if the task is not found or if the identifier is not a UUID.
- * @param uuid The UUID of the task.
- * @returns The task object.
- */
 export async function getTaskByUuid(uuid: string): Promise<TaskWarriorTask> {
-  if (!isValidUuid(uuid)) {
-    throw new Error("Invalid UUID format provided.");
-  }
-
-  const tasks = await executeTaskWarriorCommandJson([uuid, "export"]);
-  if (tasks.length === 0) {
-    throw new Error(`Task with UUID '${uuid}' not found.`);
-  }
-  if (tasks.length > 1) {
-    // This should ideally not happen if UUIDs are unique
-    console.warn(
-      `Multiple tasks found for UUID '${uuid}'. Returning the first one.`,
-    );
-  }
+  if (!isValidUuid(uuid)) throw new Error("Invalid UUID format provided.");
+  const tasks = await executeTaskWarriorCommandJson([uuid]);
+  if (tasks.length === 0) throw new Error(`Task with UUID '${uuid}' not found.`);
+  if (tasks.length !== 1) throw new Error(`Expected exactly one task for UUID '${uuid}'.`);
   return tasks[0];
 }
 
-export function setTaskDependencies(uuid: string, dependencies: string[]): void {
+export async function setTaskDependencies(uuid: string, dependencies: string[]): Promise<void> {
   const commandArgs = [uuid, "modify", "depends:"];
-
-  if (dependencies.length > 0) {
-    commandArgs.push(`depends:${dependencies.join(",")}`);
-  }
-
-  // Taskwarrior adds depends values to the current list. Clear and replace in
-  // one invocation so a rejected replacement cannot leave the task unblocked.
-  executeTaskWarriorCommandRaw(commandArgs);
-}
-
-/**
- * Fetches a single task by its ID or UUID and validates it.
- * Returns null if not found or if multiple tasks are returned (which shouldn't happen with a unique ID/UUID).
- */
-export function getTaskByIdOrUuid(idOrUuid: string): TaskWarriorTask | null {
-  try {
-    console.warn(
-      "getTaskByIdOrUuid is deprecated and may not function as expected with async changes. Use getTaskByUuid.",
-    );
-    return null;
-  } catch (error) {
-    console.error(`Error fetching task by ID/UUID ${idOrUuid}:`, error);
-    return null; // Or rethrow depending on desired error handling for callers
-  }
+  if (dependencies.length > 0) commandArgs.push(`depends:${dependencies.join(",")}`);
+  await executeTaskWarriorCommandRaw(commandArgs);
 }

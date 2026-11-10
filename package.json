@@ -15,11 +15,11 @@
     "dist"
   ],
   "scripts": {
-    "build": "esbuild src/index.ts --bundle --outfile=dist/index.js --platform=node --format=esm && node -e \"require('node:fs').chmodSync('dist/index.js', 0o755)\"",
+    "build": "esbuild src/index.ts --bundle --outfile=dist/index.js --platform=node --target=node22 --format=esm && node -e \"require('node:fs').chmodSync('dist/index.js', 0o755)\"",
     "typecheck": "tsc --noEmit",
     "prepare": "bun run build && bun run typecheck",
     "start": "node dist/index.js",
-    "dev": "esbuild src/index.ts --bundle --outfile=dist/index.js --platform=node --format=esm --watch",
+    "dev": "esbuild src/index.ts --bundle --outfile=dist/index.js --platform=node --target=node22 --format=esm --watch",
     "watch": "bun run dev",
     "lint": "eslint .",
     "lint:fix": "eslint . --fix",
@@ -54,5 +54,8 @@
     "qs": "^6.17.1",
     "fast-uri": "^3.1.9",
     "node-forge": "^1.4.2"
+  },
+  "engines": {
+    "node": ">=22"
   }
 }

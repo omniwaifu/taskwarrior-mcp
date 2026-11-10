@@ -47,22 +47,5 @@ export async function handleListTasks(
     filters.push(`limit:${args.limit}`);
   }
 
-  try {
-    const tasksArray = await executeTaskWarriorCommandJson(filters);
-    return tasksArray; // Simply return the array directly
-  } catch (error: unknown) {
-    console.error(`Error in listTasks handler:`, error);
-
-    // If the error contains "No matches", return an empty array
-    if (
-      error instanceof Error &&
-      (error.message.includes("No matches") ||
-        error.message.includes("No tasks found"))
-    ) {
-      return [];
-    }
-
-    // Re-throw the error for the central handler to process
-    throw error;
-  }
+  return executeTaskWarriorCommandJson(filters);
 }

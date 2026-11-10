@@ -1,114 +1,49 @@
 import type { CreateProjectTreeRequest } from "../../types/task.js";
-import { executeTaskWarriorCommandRaw } from "../../utils/taskwarrior.js";
-import { tagAssignmentArg } from "../../utils/tags.js";
-import { type EnrichedResponse } from "../../utils/mcpResponseFormat.js";
+import { setTaskDependencies } from "../../utils/taskwarrior.js";
+import { handleAddTask } from "../addTask/handler.js";
+import type { EnrichedResponse } from "../../utils/mcpResponseFormat.js";
 
-export async function handleCreateProjectTree(
-  args: CreateProjectTreeRequest,
-): Promise<EnrichedResponse> {
-  console.error(`createProjectTree called with:`, args);
+function validateGraph(tasks: CreateProjectTreeRequest["tasks"]): void {
+  const visiting = new Set<number>();
+  const visited = new Set<number>();
+  function visit(index: number): void {
+    if (!Number.isInteger(index) || index < 0 || index >= tasks.length) throw new Error(`Invalid dependency index ${index}.`);
+    if (visiting.has(index)) throw new Error(`Dependency cycle involving task index ${index}.`);
+    if (visited.has(index)) return;
+    visiting.add(index);
+    for (const dependency of tasks[index].depends_on_indices ?? []) visit(dependency);
+    visiting.delete(index);
+    visited.add(index);
+  }
+  tasks.forEach((_, index) => visit(index));
+}
 
+export async function handleCreateProjectTree(args: CreateProjectTreeRequest): Promise<EnrichedResponse & { status: "success" | "error"; project_uuid?: string }> {
+  validateGraph(args.tasks);
+  let projectUuid: string | undefined;
+  const created: { uuid: string; description: string; index: number }[] = [];
   try {
-    for (const [taskIndex, task] of args.tasks.entries()) {
-      for (const dependencyIndex of task.depends_on_indices || []) {
-        if (dependencyIndex < 0 || dependencyIndex >= args.tasks.length) {
-          throw new Error(
-            `Task at index ${taskIndex} references invalid dependency index ${dependencyIndex}.`,
-          );
-        }
+    const root = await handleAddTask({ description: args.project_description, project: args.project_name, tags: ["project_root"] });
+    projectUuid = root.uuid;
+    for (const [index, task] of args.tasks.entries()) {
+      const added = await handleAddTask({ ...task, project: args.project_name, parent: root.uuid });
+      created.push({ uuid: added.uuid, description: added.description, index });
+    }
+    for (const [index, task] of args.tasks.entries()) {
+      if (task.depends_on_indices?.length) {
+        await setTaskDependencies(created[index].uuid, task.depends_on_indices.map(i => created[i].uuid));
       }
     }
-
-    // Create the project task (parent)
-    const projectTaskCommand = [
-      "add",
-      `description:${args.project_description}`,
-      `project:${args.project_name}`,
-      "tags:project_root",
-    ];
-
-    const projectResult = await executeTaskWarriorCommandRaw(projectTaskCommand);
-    const projectUuidMatch = projectResult.match(/Created task (\d+)/);
-    if (!projectUuidMatch) {
-      throw new Error("Failed to create project root task");
-    }
-
-    // Get the UUID of the created project task
-    const projectTaskId = projectUuidMatch[1];
-    const uuidResult = await executeTaskWarriorCommandRaw([projectTaskId, "uuids"]);
-    const projectUuid = uuidResult.trim();
-
-    const createdTasks: { uuid: string; description: string; index: number }[] = [];
-
-    // Create all tasks first
-    for (let i = 0; i < args.tasks.length; i++) {
-      const task = args.tasks[i];
-      const commandArgs = [
-        "add",
-        `description:${task.description}`,
-        `project:${args.project_name}`,
-        `parent:${projectUuid}`,
-      ];
-
-      if (task.priority) commandArgs.push(`priority:${task.priority}`);
-      if (task.context) commandArgs.push(`context:${task.context}`);
-      if (task.tags && task.tags.length > 0) {
-        commandArgs.push(tagAssignmentArg(task.tags));
-      }
-
-      const result = await executeTaskWarriorCommandRaw(commandArgs);
-      const taskIdMatch = result.match(/Created task (\d+)/);
-
-      if (taskIdMatch) {
-        const taskId = taskIdMatch[1];
-        const taskUuidResult = await executeTaskWarriorCommandRaw([taskId, "uuids"]);
-        const taskUuid = taskUuidResult.trim();
-
-        createdTasks.push({
-          uuid: taskUuid,
-          description: task.description,
-          index: i,
-        });
-      }
-    }
-
-    // Now add dependencies
-    for (let i = 0; i < args.tasks.length; i++) {
-      const task = args.tasks[i];
-      if (task.depends_on_indices && task.depends_on_indices.length > 0) {
-        const taskUuid = createdTasks[i].uuid;
-        const dependsUuids = task.depends_on_indices.map(idx => createdTasks[idx].uuid);
-
-        await executeTaskWarriorCommandRaw([
-          taskUuid,
-          "modify",
-          `depends:${dependsUuids.join(",")}`,
-        ]);
-      }
-    }
-
-    const summary = `Created project "${args.project_name}" with ${createdTasks.length} tasks and dependency chains`;
-
-    const response: EnrichedResponse = {
-      tasks: createdTasks,
-      metadata: {
-        total: createdTasks.length + 1, // +1 for project root
-        actionable: createdTasks.filter((_, i) =>
-          !args.tasks[i].depends_on_indices || args.tasks[i].depends_on_indices!.length === 0
-        ).length,
-      },
-      insights: {
-        summary,
-        recommendations: [
-          `Project root UUID: ${projectUuid}`,
-          `Created ${createdTasks.length} tasks with dependencies`,
-        ],
-      },
+    return {
+      status: "success", project_uuid: projectUuid, tasks: created,
+      metadata: { total: created.length + 1, actionable: args.tasks.filter(task => !task.depends_on_indices?.length).length },
+      insights: { summary: `Created project "${args.project_name}" with ${created.length} tasks` },
     };
-
-    return response;
-  } catch (error: unknown) {
-    console.error(`Error in createProjectTree handler:`, error);
-    throw error;
+  } catch (error) {
+    return {
+      status: "error", project_uuid: projectUuid, tasks: created,
+      metadata: { total: created.length + (projectUuid ? 1 : 0) },
+      insights: { summary: "Project creation did not finish. Existing tasks have been retained.", warnings: [error instanceof Error ? error.message : String(error), "Inspect the returned UUIDs before retrying to avoid duplicates."] },
+    };
   }
 }

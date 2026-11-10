@@ -1,3 +1,4 @@
+import { isActionable, isWaiting, unmetDependencies, type TaskStatuses } from "./actionability.js";
 import { parseTaskwarriorDate } from "./dates.js";
 
 /**
@@ -28,6 +29,7 @@ export function createMcpSuccessResponse(data: unknown) {
  */
 export function createMcpErrorResponse(errorMessage: string) {
   return {
+    isError: true,
     content: [
       {
         type: "text",
@@ -96,17 +98,20 @@ export function generateInsights(
     priority?: string;
     due?: string;
     context?: string;
+    scheduled?: string;
+    tags?: string[];
   }>,
   options?: {
+    statuses?: TaskStatuses;
     includeRecommendations?: boolean;
     includeWarnings?: boolean;
   }
 ): { summary: string; recommendations?: string[]; warnings?: string[] } {
   const actionable = tasks.filter(
-    t => t.status === 'pending' && !t.wait && (!t.depends || t.depends.length === 0)
+    t => isActionable(t, Date.now(), false, options?.statuses)
   ).length;
-  const blocked = tasks.filter(t => t.depends && t.depends.length > 0).length;
-  const waiting = tasks.filter(t => t.wait || t.status === 'waiting').length;
+  const blocked = tasks.filter(t => unmetDependencies(t, options?.statuses).length > 0).length;
+  const waiting = tasks.filter(t => isWaiting(t)).length;
 
   const summary = `Found ${tasks.length} tasks: ${actionable} actionable, ${blocked} blocked, ${waiting} waiting`;
 

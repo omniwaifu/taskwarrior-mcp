@@ -24,6 +24,7 @@ export default [
       // Add other JS-specific or general rules here if needed
     },
   },
+  ...tseslint.configs.recommendedTypeChecked.map(config => ({ ...config, files: ["src/**/*.ts"] })),
   // TypeScript-specific configuration
   {
     files: ["src/**/*.ts"], // Apply type-aware linting to the source tree only
@@ -40,7 +41,6 @@ export default [
     },
     rules: {
       // Import recommended TypeScript rules
-      ...tseslint.configs.recommendedTypeChecked.rules, // Or .strictTypeChecked for more rules
       // ...tseslint.configs.stylisticTypeChecked.rules, // For stylistic rules
 
       // Override or add specific TypeScript rules

@@ -26,7 +26,7 @@ schema behavior or dependency isolation.
 | Annotations supplied to add_task | 64 | Bounds validation of the existing field; this does not add annotation-handling functionality. |
 | batch_modify_tasks UUIDs | 100 | Bounds sequential mutation work. Larger batches must be split and are not transactional. |
 | create_project_tree tasks | 100 | Bounds each request to one root plus at most 100 children. Splitting larger trees needs deliberate dependency coordination. |
-| Per-project-task dependency indices | 100 | At most the project task count; a request can still describe up to 10,000 index entries. Existing range checks remain in the handler. |
+| Per-project-task dependency indices | 100 | At most the project task count; a request can still describe up to 10,000 index entries. The handler validates indices and cycles before creating tasks. |
 
 These are operational budgets, not measured Taskwarrior limits. Empty
 arrays retain their previous acceptance. No values are silently truncated.
@@ -68,12 +68,12 @@ versions returned no advisories during migration validation.
 
 ## Remaining risks
 
-- Limits apply after JSON decoding. The transport can still allocate an oversized
-  serialized message; strings, unknown input fields, total payload size and
-  exported data are not bounded by this change.
-- Array limits bound per-field validation, not total runtime, subprocess output,
-  graph correctness, or concurrent calls. Existing project creation can partially
-  complete on failure. These are separate work items.
+- Per-field limits apply after JSON decoding. The server now caps stdio buffering
+  at 1 MiB and combined input elements at 25,000. Exported data has a 10 MiB
+  subprocess-output budget; malformed records fail the entire read.
+- Each subprocess now has a timeout; tool calls are serialized with a bounded
+  queue and project graphs are validated before writes. Project creation can still
+  partially complete after an execution failure and reports that work explicitly.
 - Error wording/issue shapes change in Zod 4. Clients should depend on MCP errors
   and schema constraints, not old library-specific wording.
 - The bundled SDK retains Zod's v3 compatibility exports even when resolving the

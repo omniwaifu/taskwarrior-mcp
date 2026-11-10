@@ -16,7 +16,7 @@ export const getTaskDetailsHandler = async (
     // getTaskByUuid throws if not found
     return await getTaskByUuid(uuid);
   } catch (error: unknown) {
-    console.error(`Error in getTaskDetails handler for UUID '${uuid}':`, error);
+
     // Just re-throw the error for the central handler to process
     throw error;
   }

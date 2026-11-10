@@ -37,7 +37,7 @@ jobs:
           task --version
 
       - name: Install locked dependencies
-        run: bun install --frozen-lockfile
+        run: bun install --frozen-lockfile --ignore-scripts
 
       - name: Typecheck, lint, test, and build
         run: bun run check
@@ -57,12 +57,12 @@ jobs:
           test -f "$MCP_TEST_ENTRY"
           bun test test/mcp-schema.test.ts
 
-      - name: Set up Node 18 compatibility runtime
+      - name: Set up Node 22 compatibility runtime
         uses: actions/setup-node@v7
         with:
-          node-version: "18.20.8"
+          node-version: "22"
 
-      - name: Smoke-test packaged Node 18 server
+      - name: Smoke-test packaged Node 22 server
         env:
           MCP_TEST_COMMAND: node
           MCP_TEST_ENTRY: ${{ runner.temp }}/taskwarrior-mcpb/server/index.js
