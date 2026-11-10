@@ -48,6 +48,7 @@ artifacts/
 scripts/*
 !scripts/
 !scripts/prepare-mcpb.mjs
+!scripts/mcpb.mjs
 .cursor
 .taskmasterconfig
 tasks

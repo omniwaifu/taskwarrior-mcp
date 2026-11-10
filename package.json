@@ -27,9 +27,9 @@
     "test:watch": "bun test --watch",
     "check": "bun run typecheck && bun run lint && bun run test && bun run build",
     "mcpb:prepare": "bun run build && node scripts/prepare-mcpb.mjs",
-    "mcpb:validate": "bun run mcpb:prepare && mcpb validate .mcpb-build",
-    "mcpb:pack": "bun run mcpb:prepare && mcpb pack .mcpb-build dist/taskwarrior-mcp.mcpb",
-    "mcpb:info": "mcpb info dist/taskwarrior-mcp.mcpb",
+    "mcpb:validate": "bun run mcpb:prepare && node scripts/mcpb.mjs validate .mcpb-build",
+    "mcpb:pack": "bun run mcpb:prepare && node scripts/mcpb.mjs pack .mcpb-build dist/taskwarrior-mcp.mcpb",
+    "mcpb:info": "node scripts/mcpb.mjs info dist/taskwarrior-mcp.mcpb",
     "doctor": "node dist/index.js --doctor"
   },
   "dependencies": {
@@ -37,7 +37,6 @@
     "zod": "^4.6.7"
   },
   "devDependencies": {
-    "@anthropic-ai/mcpb": "^2.1.2",
     "@types/node": "^22.20.5",
     "@typescript-eslint/eslint-plugin": "^8.72.1",
     "@typescript-eslint/parser": "^8.72.1",
@@ -46,15 +45,16 @@
     "eslint-plugin-unused-imports": "^4.4.1",
     "globals": "^17",
     "typescript": "^5.9.3",
-    "typescript-eslint": "^8.72.1"
+    "typescript-eslint": "^8.72.1",
+    "ajv": "6.15.0",
+    "fflate": "0.8.3"
   },
   "overrides": {
     "ip-address": "^10.7.4",
-    "tmp": "^0.2.7",
     "body-parser": "^2.4.0",
     "qs": "^6.17.1",
     "fast-uri": "^3.1.9",
-    "node-forge": "^1.4.2"
+    "minimatch": "11.0.1"
   },
   "engines": {
     "node": ">=22"

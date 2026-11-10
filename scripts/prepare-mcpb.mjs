@@ -19,7 +19,7 @@ if (!existsSync(manifestPath)) {
 rmSync(bundleDir, { recursive: true, force: true });
 mkdirSync(serverDir, { recursive: true });
 
-// The bundled .js entry is ESM; Node 18 needs explicit package metadata.
+// The bundled .js entry is ESM; declare explicit package metadata for all supported Node runtimes.
 writeFileSync(join(bundleDir, "package.json"), JSON.stringify({ type: "module" }, null, 2) + "\n");
 
 copyFileSync(manifestPath, join(bundleDir, "manifest.json"));

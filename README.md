@@ -289,24 +289,17 @@ are explicit commands. Integrity hashes establish artifact consistency, not trus
 in package contents.
 
 `bun audit` checks development dependencies as well as the server's dependencies.
-The `tmp` override selects the patched 0.2.x release for MCPB's older Inquirer /
-`external-editor` chain. A packaging-dependency regression test covers temporary
-file creation, editing, cleanup, and rejection of path traversal in file names.
-Remove this override once MCPB's dependency chain selects a patched version itself.
+The full audit is clean after the November 9, 2026 tooling migration; the CI audit
+remains enabled with no advisory suppressions.
 
-As of November 5, 2026, the full audit reports two development-tooling findings:
+Packaging uses `scripts/mcpb.mjs`, the vendored official MCPB 0.3 JSON schema, Ajv,
+and fflate. It produces the same four-file Node bundle without installing the
+MCPB CLI and its vulnerable Zod 3 dependency chain. It validates the manifest,
+launch configuration, ESM metadata, and explicit file allowlist. See
+[tooling security notes](docs/tooling-security.md) for review and compatibility evidence.
 
-- [GHSA-mrhx-c7xc-m3w5](https://github.com/advisories/GHSA-mrhx-c7xc-m3w5)
-  in MCPB 2.1.2's required Zod 3.25.76. MCPB has not released Zod 4 support.
-  The server resolves Zod 4.6.7 and applies request-array limits; see
-  [the compatibility notes](docs/zod4-experiment.md) for coverage and limitations.
-- [GHSA-g3hv-75wg-m249](https://github.com/advisories/GHSA-g3hv-75wg-m249)
-  in minimatch 10.2.6, used by ESLint and TypeScript ESLint. The advisory requires
-  attacker-controlled glob patterns with optimizationLevel >= 2. The patched
-  11.0.1 is outside the callers' supported dependency ranges. minimatch is not
-  reachable from the server's production dependency graph.
-
-The earlier node-forge finding is patched by the 1.4.2 override. The audit remains
-enabled and fails on the current findings. Do not process untrusted packaging
-inputs or assume development tooling is safe because it is outside the runtime.
-No incompatible major overrides or audit suppressions are applied.
+The exact minimatch 11.0.1 override fixes its glob-expansion advisory. This is a
+reviewed major-version exception for ESLint/TypeScript ESLint's actual matching
+APIs; regression tests check file selection, ignored output, type-aware rules,
+and bounded adversarial expansion. Remove the override when upstream dependency
+ranges accept a patched release. No global Zod override is used.

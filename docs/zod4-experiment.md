@@ -9,8 +9,10 @@ unrelated version holds remain unchanged.
 - Direct Zod: 4.6.7. The existing SDK accepts `^3.25 || ^4.0`.
 - SDK: compatible patch 1.32.2. Resolving this patch removes its stale nested Zod
   3.25.76 lock entry; the SDK and application resolve Zod 4.6.7 together.
-- MCPB: unchanged 2.1.2. It explicitly requires Zod `^3.25.67` and retains its
-  own 3.25.76 copy. There is no global Zod override.
+- Packaging: MCPB CLI 2.1.2 was subsequently removed to eliminate its Zod 3
+  dependency. A repository-specific ZIP packager validates against the vendored
+  official JSON schema using Ajv. See [tooling migration](tooling-security.md).
+  There is no global Zod override.
 - FastMCP and the TypeScript/Node-typings holds are unrelated and unchanged.
 
 The initial direct-Zod-only experiment passed the existing 43 tests, but retained
@@ -45,7 +47,7 @@ preserves acceptance of legacy UUID-shaped identifiers and still advertises UUID
 format. Tests cover legacy identifiers, optional/default behavior and passthrough
 Taskwarrior output fields.
 
-The MCP stdio regression lists all 22 tools, checks advertised array `maxItems`,
+The MCP stdio regression lists all 27 tools, checks advertised array `maxItems`,
 rejects an oversized add request before any task is created, then adds, queries
 and modifies a task in a disposable database. It runs against source and can run
 against the built Node bundle:
@@ -59,8 +61,7 @@ bun run mcpb:info
 bun audit
 ```
 
-The full audit still fails for MCPB's Zod 3. Do not suppress it or force MCPB onto
-an unsupported major. Bun 1.3.5's `audit` has no documented production-only flag;
+The full audit is now clean after removing MCPB's Zod 3 dependency chain. Bun 1.3.5's `audit` has no documented production-only flag;
 `bun audit --production` must not be treated as production-isolated evidence.
 Separately inspecting `npm ls --omit=dev --all --json` shows only Zod 4.6.7 in the
 production tree; querying npm's bulk-advisory endpoint for those installed
@@ -79,5 +80,6 @@ versions returned no advisories during migration validation.
 - The bundled SDK retains Zod's v3 compatibility exports even when resolving the
   patched 4.6.7 package. A clean version advisory result is not proof of universal
   resource limits; the new request-schema tests cover the actual registered path.
-- Both repositories' MCPB tooling needs an upstream Zod-4-compatible release or a
-  separately reviewed packaging migration. ARR's Python runtime is unaffected.
+- The repository-specific packager supports our current four-file MCPB 0.3
+  bundle, not every feature of the removed upstream CLI. Schema or layout changes
+  require updating its validation and tests.
