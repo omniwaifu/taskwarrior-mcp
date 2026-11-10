@@ -3,7 +3,11 @@ import { ESLint } from "eslint";
 import { spawnSync } from "node:child_process";
 
 test("patched glob matcher preserves source selection, ignored output, and type-aware lint", async () => {
-  const eslint = new ESLint();
+  // lintText supplies virtual contents; CI single-run inference reads the on-disk
+  // TypeScript program instead. Use the editor-style program for this fixture.
+  const eslint = new ESLint({ overrideConfig: { languageOptions: { parserOptions: {
+    disallowAutomaticSingleRunInference: true,
+  } } } });
   expect(await eslint.isPathIgnored("dist/index.js")).toBe(true);
   expect(await eslint.isPathIgnored(".mcpb-build/server/index.js")).toBe(true);
   expect(await eslint.isPathIgnored("src/index.ts")).toBe(false);
