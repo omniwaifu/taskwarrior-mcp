@@ -2,7 +2,7 @@
 
 `mcpb-manifest-v0.3.schema.json` is copied verbatim from
 `@anthropic-ai/mcpb@2.1.2/dist/mcpb-manifest-v0.3.schema.json` (MIT;
-see `LICENSE.mcpb`). Source: https://github.com/modelcontextprotocol/mcpb.
+see `MCPB-LICENSE.txt`). Source: https://github.com/modelcontextprotocol/mcpb.
 
 SHA-256: `3a0ac9d845711a1b9b17dfa5a52f8b60628239d6a86a9db417206a9efc78592d`.
 
