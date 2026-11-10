@@ -29,7 +29,8 @@
     "mcpb:prepare": "bun run build && node scripts/prepare-mcpb.mjs",
     "mcpb:validate": "bun run mcpb:prepare && mcpb validate .mcpb-build",
     "mcpb:pack": "bun run mcpb:prepare && mcpb pack .mcpb-build dist/taskwarrior-mcp.mcpb",
-    "mcpb:info": "mcpb info dist/taskwarrior-mcp.mcpb"
+    "mcpb:info": "mcpb info dist/taskwarrior-mcp.mcpb",
+    "doctor": "node dist/index.js --doctor"
   },
   "dependencies": {
     "@modelcontextprotocol/sdk": "^1.32.2",

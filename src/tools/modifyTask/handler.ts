@@ -1,6 +1,7 @@
 import { GTD_CONFIGURATION } from "../../utils/attributes.js";
 import type {
   ModifyTaskRequest,
+  TaskWarriorTask,
 } from "../../types/task.js";
 import {
   executeTaskWarriorCommandRaw,
@@ -10,7 +11,7 @@ import { mergeTags, tagAssignmentArg } from "../../utils/tags.js";
 
 import { operationResult } from "../../utils/operationResult.js";
 
-export const modifyTaskHandler = (args: ModifyTaskRequest, toolName = "modifyTask") => operationResult(toolName, async () => {
+export async function modifyTask(args: ModifyTaskRequest): Promise<TaskWarriorTask> {
   const { uuid, ...modifications } = args;
   const existingTask = await getTaskByUuid(uuid);
   const commandArgs: string[] = [...GTD_CONFIGURATION, uuid, "modify"];
@@ -18,16 +19,13 @@ export const modifyTaskHandler = (args: ModifyTaskRequest, toolName = "modifyTas
   let nextDepends: string[] | undefined;
 
   // Iterate over the modifications and add them to the command arguments
-  if (modifications.description !== undefined) {
-    commandArgs.push(`description:${modifications.description}`);
-  }
   if (modifications.status) {
     commandArgs.push(`status:${modifications.status}`);
   }
   if (modifications.due !== undefined) {
     commandArgs.push(`due:${modifications.due}`);
   }
-  if (modifications.priority) {
+  if (modifications.priority !== undefined) {
     commandArgs.push(`priority:${modifications.priority}`);
   }
   if (modifications.project !== undefined) {
@@ -42,6 +40,10 @@ export const modifyTaskHandler = (args: ModifyTaskRequest, toolName = "modifyTas
         mergeTags(existingTask.tags, modifications.addTags, modifications.removeTags),
       ),
     );
+  }
+
+  for (const field of ["estimated_minutes", "waiting_for", "follow_up"] as const) {
+    if (modifications[field] !== undefined) commandArgs.push(`${field}:${modifications[field] ?? ""}`);
   }
 
   // GTD fields
@@ -60,7 +62,7 @@ export const modifyTaskHandler = (args: ModifyTaskRequest, toolName = "modifyTas
   if (modifications.energy !== undefined) {
     commandArgs.push(`energy:${modifications.energy}`);
   }
-  if (modifications.parent) {
+  if (modifications.parent !== undefined) {
     commandArgs.push(`mcp_parent:${modifications.parent}`);
   }
 
@@ -85,11 +87,14 @@ export const modifyTaskHandler = (args: ModifyTaskRequest, toolName = "modifyTas
     }
   }
 
-  if (commandArgs.length === baseArgumentCount && nextDepends === undefined) return existingTask;
+  if (commandArgs.length === baseArgumentCount && nextDepends === undefined && modifications.description === undefined) return existingTask;
   if (nextDepends !== undefined) {
     commandArgs.push("depends:");
     if (nextDepends.length) commandArgs.push(`depends:${nextDepends.join(",")}`);
   }
+  if (modifications.description !== undefined) commandArgs.push("--", modifications.description);
   await executeTaskWarriorCommandRaw(commandArgs);
   return getTaskByUuid(uuid);
-});
+}
+
+export const modifyTaskHandler = (args: ModifyTaskRequest, toolName = "modifyTask") => operationResult(toolName, () => modifyTask(args));

@@ -34,6 +34,10 @@ export const TaskWarriorTaskSchema = z.object({
   context: z.string().optional(), // GTD context (@home, @work, etc.)
   energy: z.string().optional(), // Energy level required
   urgency: z.number().optional(), // Calculated urgency score
+  estimated_minutes: z.number().optional(),
+  waiting_for: z.string().optional(),
+  follow_up: z.string().optional(),
+  mcp_parent: z.string().optional(),
   complexity: z.union([z.number(), z.string()]).optional(), // Time estimate / complexity
   recur: z.string().optional(), // Recurrence pattern
   mask: z.string().optional(), // Recurrence mask
@@ -53,14 +57,24 @@ export const INPUT_ARRAY_LIMITS = {
   projectDependencies: 100,
 } as const;
 
+export const PlanningFields = {
+  estimated_minutes: z.number().int().min(0).max(525600).nullable().optional(),
+  waiting_for: z.string().max(512).optional(),
+  follow_up: z.string().max(128).optional(),
+};
+export const PagingFields = {
+  limit: z.number().int().min(1).max(200).optional(),
+  cursor: z.string().max(1024).optional(),
+};
+
 // Request schemas for tool inputs
 
 export const ListPendingTasksRequestSchema = z.object({
   project: z
     .string()
-    .regex(/^[a-zA-Z0-9 ._-]+$/)
+    .regex(/^[\p{L}\p{N}\p{M} ._-]+$/u)
     .optional(),
-  tags: z.array(z.string().regex(/^[a-zA-Z0-9_-]+$/)).max(INPUT_ARRAY_LIMITS.tags).optional(),
+  tags: z.array(z.string().regex(/^[\p{L}\p{N}\p{M}_-]+$/u)).max(INPUT_ARRAY_LIMITS.tags).optional(),
 });
 export type ListPendingTasksRequest = z.infer<
   typeof ListPendingTasksRequestSchema
@@ -72,9 +86,9 @@ export const ListTasksRequestSchema = z.object({
     .optional(),
   project: z
     .string()
-    .regex(/^[a-zA-Z0-9 ._-]+$/)
+    .regex(/^[\p{L}\p{N}\p{M} ._-]+$/u)
     .optional(),
-  tags: z.array(z.string().regex(/^[a-zA-Z0-9_-]+$/)).max(INPUT_ARRAY_LIMITS.tags).optional(),
+  tags: z.array(z.string().regex(/^[\p{L}\p{N}\p{M}_-]+$/u)).max(INPUT_ARRAY_LIMITS.tags).optional(),
   descriptionContains: z.string().optional(), // For description.contains filter
   dueBefore: z.string().optional(),
   dueAfter: z.string().optional(),
@@ -93,14 +107,15 @@ export const MarkTaskDoneRequestSchema = z.object({
 export type MarkTaskDoneRequest = z.infer<typeof MarkTaskDoneRequestSchema>;
 
 export const AddTaskRequestSchema = z.object({
+  ...PlanningFields,
   description: z.string(),
   due: z.string().optional(),
-  priority: z.enum(["H", "M", "L"]).optional(),
+  priority: z.string().regex(/^[\p{L}\p{N}_-]+$/u).optional(),
   project: z
     .string()
-    .regex(/^[a-zA-Z0-9 ._-]+$/)
+    .regex(/^[\p{L}\p{N}\p{M} ._-]+$/u)
     .optional(),
-  tags: z.array(z.string().regex(/^[a-zA-Z0-9_-]+$/)).max(INPUT_ARRAY_LIMITS.tags).optional(),
+  tags: z.array(z.string().regex(/^[\p{L}\p{N}\p{M}_-]+$/u)).max(INPUT_ARRAY_LIMITS.tags).optional(),
   // GTD fields
   scheduled: z.string().optional(),
   wait: z.string().optional(),
@@ -122,19 +137,20 @@ export const GetTaskDetailsRequestSchema = z.object({
 export type GetTaskDetailsRequest = z.infer<typeof GetTaskDetailsRequestSchema>;
 
 export const ModifyTaskRequestSchema = z.object({
+  ...PlanningFields,
   uuid: z.guid(),
   description: z.string().optional(),
   status: z
     .enum(["pending", "completed", "deleted", "waiting", "recurring"])
     .optional(),
   due: z.string().optional(),
-  priority: z.enum(["H", "M", "L"]).optional(),
+  priority: z.string().regex(/^[\p{L}\p{N}_-]*$/u).optional(),
   project: z
     .string()
-    .regex(/^[a-zA-Z0-9 ._-]*$/) // Allow empty string for removal
+    .regex(/^[\p{L}\p{N}\p{M} ._-]*$/u) // Allow empty string for removal
     .optional(),
-  addTags: z.array(z.string().regex(/^[a-zA-Z0-9_-]+$/)).max(INPUT_ARRAY_LIMITS.tags).optional(),
-  removeTags: z.array(z.string().regex(/^[a-zA-Z0-9_-]+$/)).max(INPUT_ARRAY_LIMITS.tags).optional(),
+  addTags: z.array(z.string().regex(/^[\p{L}\p{N}\p{M}_-]+$/u)).max(INPUT_ARRAY_LIMITS.tags).optional(),
+  removeTags: z.array(z.string().regex(/^[\p{L}\p{N}\p{M}_-]+$/u)).max(INPUT_ARRAY_LIMITS.tags).optional(),
   // GTD fields
   scheduled: z.string().optional(),
   wait: z.string().optional(),
@@ -143,7 +159,7 @@ export const ModifyTaskRequestSchema = z.object({
   energy: z.string().optional(),
   addDepends: z.array(z.guid()).max(INPUT_ARRAY_LIMITS.dependencies).optional(),
   removeDepends: z.array(z.guid()).max(INPUT_ARRAY_LIMITS.dependencies).optional(),
-  parent: z.guid().optional(),
+  parent: z.union([z.guid(), z.literal("")]).optional(),
   // Recurring/Habit fields
   recur: z.string().optional(), // Recurrence pattern (daily, weekly, monthly, etc.)
 });
@@ -205,34 +221,41 @@ export type QuickCaptureRequest = z.infer<typeof QuickCaptureRequestSchema>;
 
 // Query tools
 export const GetNextActionsRequestSchema = z.object({
+  ...PagingFields,
+  project: z.string().regex(/^[\p{L}\p{N}\p{M} ._-]+$/u).optional(),
+  max_minutes: z.number().int().nonnegative().optional(),
+  include_unestimated: z.boolean().optional(),
   context: z.string().optional(), // Filter by @context
   energy_level: z.enum(["high", "medium", "low"]).optional(),
   time_available: z.enum(["5min", "15min", "30min", "1hour", "2hours+"]).optional(),
   include_blocked: z.boolean().optional().default(false),
-  limit: z.number().int().positive().optional(),
 });
 export type GetNextActionsRequest = z.infer<typeof GetNextActionsRequestSchema>;
 
 export const GetWaitingForRequestSchema = z.object({
+  waiting_for: z.string().optional(),
+  project: z.string().regex(/^[\p{L}\p{N}\p{M} ._-]+$/u).optional(),
+  follow_up_due: z.boolean().optional(),
   group_by: z.enum(["blocker", "date", "project"]).optional().default("blocker"),
 });
 export type GetWaitingForRequest = z.infer<typeof GetWaitingForRequestSchema>;
 
 export const GetBlockedTasksRequestSchema = z.object({
-  project: z.string().regex(/^[a-zA-Z0-9 ._-]+$/).optional(),
+  project: z.string().regex(/^[\p{L}\p{N}\p{M} ._-]+$/u).optional(),
   include_waiting: z.boolean().optional().default(false),
 });
 export type GetBlockedTasksRequest = z.infer<typeof GetBlockedTasksRequestSchema>;
 
 export const GetTaskTreeRequestSchema = z.object({
-  project: z.string().regex(/^[a-zA-Z0-9 ._-]+$/).optional(),
+  max_nodes: z.number().int().min(1).max(500).optional(),
+  project: z.string().regex(/^[\p{L}\p{N}\p{M} ._-]+$/u).optional(),
   uuid: z.guid().optional(), // Root task UUID
-  depth: z.number().int().positive().optional(), // Max depth to traverse
+  depth: z.number().int().min(0).max(100).optional(), // Max depth to traverse
 });
 export type GetTaskTreeRequest = z.infer<typeof GetTaskTreeRequestSchema>;
 
 export const GetProjectStatusRequestSchema = z.object({
-  project: z.string().regex(/^[a-zA-Z0-9 ._-]+$/),
+  project: z.string().regex(/^[\p{L}\p{N}\p{M} ._-]+$/u),
 });
 export type GetProjectStatusRequest = z.infer<typeof GetProjectStatusRequestSchema>;
 
@@ -256,13 +279,17 @@ export const SetContextRequestSchema = z.object({
 export type SetContextRequest = z.infer<typeof SetContextRequestSchema>;
 
 export const CreateProjectTreeRequestSchema = z.object({
-  project_name: z.string().regex(/^[a-zA-Z0-9 ._-]+$/),
+  project_name: z.string().regex(/^[\p{L}\p{N}\p{M} ._-]+$/u),
   project_description: z.string(),
   tasks: z.array(z.object({
+    ...PlanningFields,
+    due: z.string().optional(),
+    scheduled: z.string().optional(),
+    energy: z.string().optional(),
     description: z.string(),
     depends_on_indices: z.array(z.number().int()).max(INPUT_ARRAY_LIMITS.projectDependencies).optional(), // Indices in tasks array
-    priority: z.enum(["H", "M", "L"]).optional(),
-    tags: z.array(z.string().regex(/^[a-zA-Z0-9_-]+$/)).max(INPUT_ARRAY_LIMITS.tags).optional(),
+    priority: z.string().regex(/^[\p{L}\p{N}_-]+$/u).optional(),
+    tags: z.array(z.string().regex(/^[\p{L}\p{N}\p{M}_-]+$/u)).max(INPUT_ARRAY_LIMITS.tags).optional(),
     context: z.string().optional(),
   })).max(INPUT_ARRAY_LIMITS.projectTasks),
 });
@@ -290,11 +317,13 @@ export type SetDeadlineRequest = z.infer<typeof SetDeadlineRequestSchema>;
 
 // Clarify tools
 export const ProcessInboxItemRequestSchema = z.object({
+  ...PlanningFields,
+  description: z.string().trim().min(1).optional(),
   uuid: z.guid(),
   action: z.enum(["next_action", "project", "waiting", "someday", "delete", "reference"]),
-  project: z.string().regex(/^[a-zA-Z0-9 ._-]+$/).optional(),
+  project: z.string().regex(/^[\p{L}\p{N}\p{M} ._-]+$/u).optional(),
   context: z.string().optional(),
-  priority: z.enum(["H", "M", "L"]).optional(),
+  priority: z.string().regex(/^[\p{L}\p{N}_-]+$/u).optional(),
   due: z.string().optional(),
   scheduled: z.string().optional(),
   wait: z.string().optional(),
@@ -312,7 +341,7 @@ export type ClarifyTaskRequest = z.infer<typeof ClarifyTaskRequestSchema>;
 
 // Review tools
 export const ProcessInboxRequestSchema = z.object({
-  limit: z.number().int().positive().optional(),
+  ...PagingFields,
 });
 export type ProcessInboxRequest = z.infer<typeof ProcessInboxRequestSchema>;
 
@@ -324,25 +353,12 @@ export type WeeklyReviewRequest = z.infer<typeof WeeklyReviewRequestSchema>;
 // Phase 3: Batch and advanced tools
 export const BatchModifyTasksRequestSchema = z.object({
   uuids: z.array(z.guid()).max(INPUT_ARRAY_LIMITS.batchTasks),
-  modifications: z.object({
-    description: z.string().optional(),
-    status: z.enum(["pending", "completed", "deleted", "waiting", "recurring"]).optional(),
-    due: z.string().optional(),
-    priority: z.enum(["H", "M", "L"]).optional(),
-    project: z.string().regex(/^[a-zA-Z0-9 ._-]*$/).optional(),
-    addTags: z.array(z.string().regex(/^[a-zA-Z0-9_-]+$/)).max(INPUT_ARRAY_LIMITS.tags).optional(),
-    removeTags: z.array(z.string().regex(/^[a-zA-Z0-9_-]+$/)).max(INPUT_ARRAY_LIMITS.tags).optional(),
-    scheduled: z.string().optional(),
-    wait: z.string().optional(),
-    until: z.string().optional(),
-    context: z.string().optional(),
-    energy: z.string().optional(),
-  }),
+  modifications: ModifyTaskRequestSchema.omit({ uuid: true }),
 });
 export type BatchModifyTasksRequest = z.infer<typeof BatchModifyTasksRequestSchema>;
 
 export const GetSomedayMaybeRequestSchema = z.object({
-  project: z.string().regex(/^[a-zA-Z0-9 ._-]+$/).optional(),
+  project: z.string().regex(/^[\p{L}\p{N}\p{M} ._-]+$/u).optional(),
   limit: z.number().int().positive().optional(),
 });
 export type GetSomedayMaybeRequest = z.infer<typeof GetSomedayMaybeRequestSchema>;
@@ -371,3 +387,16 @@ export type ToolHandlerSuccessResponse =
 
 // Ensure TaskWarriorTaskSchema is comprehensive for what handlers might return
 // No changes needed to TaskWarriorTaskSchema itself for this step.
+
+export const QueryTasksRequestSchema = ListTasksRequestSchema.extend({
+  ...PagingFields,
+  context: z.string().optional(),
+  priority: z.string().optional(),
+  waiting_for: z.string().optional(),
+  parent: z.union([z.guid(), z.literal("")]).optional(),
+  active: z.boolean().optional(),
+  blocked: z.boolean().optional(),
+  sort_by: z.enum(["urgency", "due", "entry", "modified", "description", "project", "priority"]).optional(),
+  sort_order: z.enum(["asc", "desc"]).optional(),
+});
+export type QueryTasksRequest = z.infer<typeof QueryTasksRequestSchema>;

@@ -31,7 +31,7 @@ const hasTask = spawnSync("task", ["--version"], { stdio: "ignore" }).status ===
   try {
     await client.connect(transport);
     const { tools } = await client.listTools();
-    expect(tools).toHaveLength(22);
+    expect(tools).toHaveLength(27);
     const schema = (name: string) => tools.find(tool => tool.name === name)!.inputSchema;
     const add = schema("add_task");
     expect(add.required).toContain("description");
@@ -58,8 +58,14 @@ const hasTask = spawnSync("task", ["--version"], { stdio: "ignore" }).status ===
     expect(untouched.status).toBe(0);
     expect(JSON.parse(untouched.stdout)).toEqual([]);
 
+    for (const tool of tools) {
+      expect(tool.outputSchema?.properties?.status).toBeDefined();
+      expect(tool.annotations?.readOnlyHint).toBeDefined();
+    }
     const added = await client.callTool({ name: "add_task", arguments: { description: "disposable MCP test", tags: ["inbox"] } });
     expect(added.isError).not.toBe(true);
+    expect(added.structuredContent).toMatchObject({ status: "success", data: { description: "disposable MCP test" } });
+
     const listed = await client.callTool({ name: "list_tasks", arguments: { tags: ["inbox"] } });
     expect(listed.isError).not.toBe(true);
     const tasks = JSON.parse((listed.content as { text: string }[])[0].text);
@@ -74,6 +80,18 @@ const hasTask = spawnSync("task", ["--version"], { stdio: "ignore" }).status ===
     expect(JSON.parse(final.stdout)[0].tags).toEqual(["next"]);
     const missing = await client.callTool({ name: "modify_task", arguments: { uuid: "00000000-0000-0000-0000-000000000000", project: "Missing" } });
     expect(missing.isError).toBe(true);
+    expect(missing.structuredContent).toMatchObject({ status: "error", error: { code: "TASK_NOT_FOUND" } });
+    const capture = await client.callTool({ name: "quick_capture", arguments: { description: "Feature workflow" } });
+    const captured = (capture.structuredContent!.data as { uuid: string });
+    const clarified = await client.callTool({ name: "process_inbox_item", arguments: { uuid: captured.uuid, action: "waiting", waiting_for: "Reviewer", follow_up: "2000-01-01", estimated_minutes: 20 } });
+    expect(clarified.structuredContent).toMatchObject({ status: "success", data: { task: { waiting_for: "Reviewer", estimated_minutes: 20 } } });
+    const queried = await client.callTool({ name: "query_tasks", arguments: { waiting_for: "Reviewer", limit: 1 } });
+    expect(queried.structuredContent).toMatchObject({ status: "success", data: { page: { total: 1, returned: 1, has_more: false } } });
+    const tree = await client.callTool({ name: "get_task_tree", arguments: { uuid: captured.uuid } });
+    expect(tree.structuredContent).toMatchObject({ status: "success", data: { metadata: { returned: 1, truncated: false } } });
+    const health = await client.callTool({ name: "get_server_status", arguments: {} });
+    expect(health.structuredContent).toMatchObject({ status: "success" });
+
     const deleted = await client.callTool({ name: "delete_task", arguments: { uuid: tasks[0].uuid, skipConfirmation: true } });
     expect(deleted.isError).not.toBe(true);
     const afterDelete = spawnSync("task", [tasks[0].uuid, "export"], { env, encoding: "utf8" });

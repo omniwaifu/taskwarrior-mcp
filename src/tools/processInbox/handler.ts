@@ -1,3 +1,5 @@
+import { paginate } from "../../utils/pagination.js";
+import type { ProcessInboxRequest } from "../../types/task.js";
 import { isActionable, taskStatuses } from "../../utils/actionability.js";
 import { executeTaskWarriorCommandJson } from "../../utils/taskwarrior.js";
 import { generateInsights, type EnrichedResponse } from "../../utils/mcpResponseFormat.js";
@@ -6,11 +8,14 @@ import { generateInsights, type EnrichedResponse } from "../../utils/mcpResponse
  * Process inbox - Get all tasks tagged with +inbox for clarification
  * Returns enriched response with inbox tasks that need processing
  */
-export async function handleProcessInbox(): Promise<EnrichedResponse> {
+export async function handleProcessInbox(args: ProcessInboxRequest = {}): Promise<EnrichedResponse> {
   // Get all tasks with +inbox tag
   const database = await executeTaskWarriorCommandJson([]);
   const statuses = taskStatuses(database);
   const inboxTasks = database.filter(task => task.status === "pending" && task.tags?.includes("inbox"));
+
+  inboxTasks.sort((a, b) => a.entry.localeCompare(b.entry) || a.uuid.localeCompare(b.uuid));
+  const page = paginate(inboxTasks, args, { tool: "process_inbox" });
 
   // Generate insights
   const insights = generateInsights(inboxTasks, {
@@ -31,7 +36,8 @@ export async function handleProcessInbox(): Promise<EnrichedResponse> {
   }
 
   const response: EnrichedResponse = {
-    tasks: inboxTasks,
+    tasks: page.items,
+    page: page.page,
     metadata: {
       total: inboxTasks.length,
       actionable: inboxTasks.filter(task => isActionable(task, Date.now(), false, statuses)).length,

@@ -1,4 +1,4 @@
-import { taskStatuses } from "../../utils/actionability.js";
+import { isWaiting, matchesProject, taskStatuses } from "../../utils/actionability.js";
 import { parseTaskwarriorDate } from "../../utils/dates.js";
 import type { GetWaitingForRequest } from "../../types/task.js";
 import { executeTaskWarriorCommandJson } from "../../utils/taskwarrior.js";
@@ -17,18 +17,10 @@ export async function handleGetWaitingFor(
   const allTasks = database.filter(task => task.status === "pending" || task.status === "waiting");
 
   const now = new Date();
-  const waitingTasks = allTasks.filter(task => {
-    // Include if status is waiting
-    if (task.status === 'waiting') return true;
-
-    // Include if wait date is set and in the future
-    if (task.wait) {
-      const waitDate = parseTaskwarriorDate(task.wait);
-      return waitDate > now;
-    }
-
-    return false;
-  });
+  const waitingTasks = allTasks.filter(task => isWaiting(task, now.getTime())
+    && (!args.project || matchesProject(task, args.project))
+    && (!args.waiting_for || task.waiting_for === args.waiting_for)
+    && (!args.follow_up_due || (!!task.follow_up && parseTaskwarriorDate(task.follow_up) <= now)));
 
   // Group tasks
   const groups = Object.create(null) as { [key: string]: unknown[] };
@@ -40,11 +32,11 @@ export async function handleGetWaitingFor(
     if (groupBy === "project") {
       groupKey = task.project || "(no project)";
     } else if (groupBy === "date") {
-      groupKey = task.wait || "(no wait date)";
+      groupKey = task.follow_up || task.wait || "(no follow-up date)";
     } else {
       // Group by blocker (from annotations or description)
-      groupKey = "(waiting)";
-      if (task.annotations && task.annotations.length > 0) {
+      groupKey = task.waiting_for || "(deferred)";
+      if (!task.waiting_for && task.annotations && task.annotations.length > 0) {
         const lastAnnotation = task.annotations[task.annotations.length - 1];
         if (lastAnnotation.description) {
           groupKey = lastAnnotation.description.substring(0, 50);

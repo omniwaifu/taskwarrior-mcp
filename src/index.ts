@@ -1,10 +1,17 @@
 #!/usr/bin/env node
 
+import { inspectEnvironment } from "./utils/diagnostics.js";
 import { runTool } from "./utils/toolResult.js";
 
 import { z } from "zod";
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
+
+import { handleQuickCapture } from "./tools/quickCapture/handler.js";
+import { handleProcessInboxItem } from "./tools/processInboxItem/handler.js";
+
+import { handleQueryTasks } from "./tools/queryTasks/handler.js";
+import { handleGetTaskTree } from "./tools/getTaskTree/handler.js";
 
 // Import handlers
 import { handleAddTask } from "./tools/addTask/index.js";
@@ -32,6 +39,11 @@ import { handleGetRecurringTasks } from "./tools/getRecurringTasks/index.js";
 
 // Import schemas
 import {
+  QueryTasksRequestSchema,
+  GetTaskTreeRequestSchema,
+  ProcessInboxRequestSchema,
+  QuickCaptureRequestSchema,
+  ProcessInboxItemRequestSchema,
   MarkTaskDoneRequestSchema,
   AddTaskRequestSchema,
   ListTasksRequestSchema,
@@ -60,9 +72,15 @@ const server = new McpServer({
 }, { maxToolInputElements: 25_000 });
 
 const readOnlyTools = new Set([
-  "list_tasks", "get_task_details", "get_next_actions", "process_inbox", "get_waiting_for",
+  "get_server_status", "query_tasks", "get_task_tree", "list_tasks", "get_task_details", "get_next_actions", "process_inbox", "get_waiting_for",
   "get_blocked_tasks", "get_project_status", "weekly_review", "get_someday_maybe", "get_recurring_tasks",
 ]);
+
+const outputSchema = {
+  status: z.enum(["success", "error"]),
+  data: z.unknown(),
+  error: z.object({ code: z.string(), message: z.string() }).optional(),
+};
 
 function registerJsonTool<S extends z.ZodRawShape>(
   name: string,
@@ -71,11 +89,19 @@ function registerJsonTool<S extends z.ZodRawShape>(
   inputSchema: S,
 ) {
   const schema = z.object(inputSchema);
-  server.registerTool<z.ZodRawShape, typeof schema>(name, {
-    description, inputSchema: schema,
+  server.registerTool<typeof outputSchema, typeof schema>(name, {
+    description, inputSchema: schema, outputSchema,
     annotations: { readOnlyHint: readOnlyTools.has(name), destructiveHint: !readOnlyTools.has(name), openWorldHint: false },
   }, (args) => runTool(() => handler(args)));
 }
+
+registerJsonTool("get_server_status", "Check the Node runtime, Taskwarrior executable, and configuration readability without exporting task data or modifying task records. Returns actionable setup diagnostics; it is not a database-integrity check.", inspectEnvironment, {});
+
+registerJsonTool("query_tasks", "Search tasks with stable sorting and cursor pagination. Supports legacy date/project/tag filters plus context, priority, waiting_for, parent, active, and blocked. Returns page.total and page.next_cursor; repeat identical filters for subsequent pages. Changed results invalidate the cursor. Missing sort values are last; UUID breaks ties. Priority defaults to configured highest-first order.", handleQueryTasks, QueryTasksRequestSchema.shape);
+registerJsonTool("get_task_tree", "Read project hierarchy using mcp_parent, separate from recurrence parent. Specify project or root uuid. Returns task nodes with depth, child UUIDs, unresolved dependencies, and completion/actionability counts for returned nodes. depth and max_nodes bound traversal; truncated indicates more nodes, retrievable using a child UUID. Reports cycles and missing parents.", handleGetTaskTree, GetTaskTreeRequestSchema.shape);
+
+registerJsonTool("quick_capture", "Capture an unprocessed thought or task in the inbox. Adds the inbox tag; clarify it before treating it as a next action.", handleQuickCapture, QuickCaptureRequestSchema.shape);
+registerJsonTool("process_inbox_item", "Clarify an inbox item as next_action, project, waiting, someday, reference, or delete. Removes inbox and incompatible workflow tags. Waiting requires waiting_for; project requires a project name. Delete permanently marks the item deleted. An optional note is added after classification; errors report partial work.", handleProcessInboxItem, ProcessInboxItemRequestSchema.shape);
 
 registerJsonTool(
   "mark_task_done",
@@ -86,7 +112,7 @@ registerJsonTool(
 
 registerJsonTool(
   "add_task",
-  "Add a new task with full GTD and habit support. Supports: description (required), due, priority, project, tags, scheduled, wait, until, context, energy, depends, parent (stored as mcp_parent for project hierarchy), annotations, recur (for habits/recurring tasks). Use tags=['inbox'] for quick capture. For habits: add recur (daily/weekly/monthly) with due date (e.g., recur:'daily', due:'today').",
+  "Add a new task with full GTD and habit support. Supports: description (required), due, priority, project, tags, scheduled, wait, until, context, energy, depends, parent (stored as mcp_parent for project hierarchy), annotations, estimated_minutes, waiting_for, follow_up, recur (for habits/recurring tasks). Use tags=['inbox'] for quick capture. For habits: add recur (daily/weekly/monthly) with due date (e.g., recur:'daily', due:'today').",
   (args) => handleAddTask(args),
   AddTaskRequestSchema.shape,
 );
@@ -107,7 +133,7 @@ registerJsonTool(
 
 registerJsonTool(
   "modify_task",
-  "Modify any task attributes by UUID. Supports: description, status, due, priority, project, addTags, removeTags, scheduled, wait, until, context, energy, addDepends, removeDepends, parent, recur. Use this for scheduling (scheduled), deferring (wait), deadlines (due), contexts (context), and setting up recurring patterns (recur).",
+  "Modify any task attributes by UUID. Supports: description, status, due, priority, project, addTags, removeTags, scheduled, wait, until, context, energy, addDepends, removeDepends, parent, recur, estimated_minutes, waiting_for, follow_up. Empty strings clear optional text/date fields, priority and parent; null clears estimated_minutes. Use this for scheduling (scheduled), deferring (wait), deadlines (due), contexts (context), and setting up recurring patterns (recur).",
   (args) => modifyTaskHandler(args),
   ModifyTaskRequestSchema.shape,
 );
@@ -163,21 +189,21 @@ registerJsonTool(
 
 registerJsonTool(
   "get_next_actions",
-  "[GTD Decision] Get actionable next actions - answers 'What should I do NOW?'. Returns enriched analysis (not just filtered tasks) with actionability insights, AI recommendations, context groupings, and metadata. Supports filtering by context, energy level, time available. Don't use list_tasks for decision-making - this tool is designed for that.",
+  "[GTD Decision] Get actionable next actions - answers 'What should I do NOW?'. Returns enriched analysis (not just filtered tasks) with actionability insights, AI recommendations, context groupings, and metadata. Supports context, project, energy, time_available or max_minutes, limit (default 50, max 200), and cursor. Excludes inbox, reference, someday, project roots, delegation, future dates and unresolved dependencies by default. Time filters exclude unknown estimates unless include_unestimated is true. Don't use list_tasks for decision-making - this tool is designed for that.",
   (args) => handleGetNextActions(args),
   GetNextActionsRequestSchema.shape,
 );
 
 registerJsonTool(
   "process_inbox",
-  "[GTD Review] Get all tasks tagged with +inbox for GTD clarify/process workflow. Returns enriched response (not just a filtered list) with clarification prompts, decision structure, and processing guidance. Don't use list_tasks(tags=['inbox']) for inbox processing - this tool provides the GTD workflow structure.",
-  () => handleProcessInbox(),
-  {},
+  "[GTD Review] Page through tasks tagged with +inbox (limit defaults to 50, maximum 200; use page.next_cursor with unchanged filters) for GTD clarify/process workflow. Returns enriched response (not just a filtered list) with clarification prompts, decision structure, and processing guidance. Don't use list_tasks(tags=['inbox']) for inbox processing - this tool provides the GTD workflow structure.",
+  (args) => handleProcessInbox(args),
+  ProcessInboxRequestSchema.shape,
 );
 
 registerJsonTool(
   "get_waiting_for",
-  "[GTD Review] Get tasks waiting on EXTERNAL factors (people, events, responses). Filters by status:waiting or wait date. Group by blocker (person/factor), date (wait date), or project. Essential for GTD weekly review. For tasks blocked by OTHER TASKS (internal dependencies), use get_blocked_tasks instead.",
+  "[GTD Review] Get tasks waiting on EXTERNAL factors (people, events, responses). Includes waiting_for delegation and native waiting/deferred tasks. Group by blocker (person/factor), date (follow_up or wait), or project. Filter by waiting_for, project, or follow_up_due. Follow-up dates do not release delegation. Essential for GTD weekly review. For tasks blocked by OTHER TASKS (internal dependencies), use get_blocked_tasks instead.",
   (args) => handleGetWaitingFor(args),
   GetWaitingForRequestSchema.shape,
 );
@@ -232,6 +258,16 @@ registerJsonTool(
 );
 
 async function main() {
+  if (process.argv.includes("--doctor")) {
+    const report = await inspectEnvironment();
+    console.log(JSON.stringify(report, null, 2));
+    process.exitCode = report.status === "success" ? 0 : 1;
+    return;
+  }
+  if (process.argv.includes("--help")) {
+    console.log("Taskwarrior MCP server (stdio)\nUsage: taskwarrior-mcp [--doctor | --help]\nConfigure TASK_BIN and optional TASKRC/TASKDATA; run --doctor to diagnose setup.");
+    return;
+  }
   const transport = new StdioServerTransport(process.stdin, process.stdout, { maxBufferSize: 1024 * 1024 });
   await server.connect(transport);
   console.error("MCP TaskWarrior Server running on stdio");

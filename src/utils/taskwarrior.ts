@@ -1,5 +1,6 @@
 import { execFile, type ExecFileOptionsWithStringEncoding } from "node:child_process";
 import { TaskWarriorTaskSchema, type TaskWarriorTask } from "../types/task.js";
+import { GTD_CONFIGURATION } from "./attributes.js";
 import { isValidUuid } from "./uuid.js";
 
 const NO_MATCH = /^(?:No matches|No tasks specified|No tasks found|No tasks|No pending tasks)\.?$/i;
@@ -22,7 +23,7 @@ export async function executeTaskWarriorCommandRaw(
       if (!error) return resolve(stdout.trim());
       // Do not include argv, task contents, or stack traces in routine diagnostics.
       // Details go only to the requesting client, never to the server's logs.
-      const message = error.killed ? "Taskwarrior command timed out or exceeded its output limit."
+      const message = error.code === "ENOENT" ? "Taskwarrior executable not found. Install Taskwarrior or set TASK_BIN; run --doctor for setup diagnostics." : error.killed ? "Taskwarrior command timed out or exceeded its output limit."
         : stderr.trim() || stdout.trim() || `Taskwarrior command failed (${String(error.code)}).`;
       reject(new Error(message));
     });
@@ -52,7 +53,7 @@ export function parseTaskwarriorExport(output: string): TaskWarriorTask[] {
 }
 
 export async function executeTaskWarriorCommandJson(args: string[]): Promise<TaskWarriorTask[]> {
-  const commandArgs = ["rc.json.array=on", "rc.verbose=nothing", ...args];
+  const commandArgs = [...GTD_CONFIGURATION, "rc.json.array=on", "rc.verbose=nothing", ...args];
   if (!args.some(arg => arg.toLowerCase() === "export")) commandArgs.push("export");
   try {
     return parseTaskwarriorExport(await executeTaskWarriorCommandRaw(commandArgs));

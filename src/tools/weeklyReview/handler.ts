@@ -1,5 +1,5 @@
 import { habitStats, groupHabitInstances } from "../../utils/habits.js";
-import { isActionable, taskStatuses } from "../../utils/actionability.js";
+import { isActionable, isWaiting, taskStatuses } from "../../utils/actionability.js";
 import { parseTaskwarriorDate } from "../../utils/dates.js";
 import { executeTaskWarriorCommandJson } from "../../utils/taskwarrior.js";
 import { type EnrichedResponse } from "../../utils/mcpResponseFormat.js";
@@ -16,14 +16,8 @@ export async function handleWeeklyReview(): Promise<EnrichedResponse> {
   const completedThisWeek = allTasks.filter(task => task.status === "completed" && task.end && parseTaskwarriorDate(task.end) >= sevenDaysAgo);
 
   const now = new Date();
-  const waitingTasks = allPending.filter(task => {
-    if (task.status === 'waiting') return true;
-    if (task.wait) {
-      const waitDate = parseTaskwarriorDate(task.wait);
-      return waitDate > now;
-    }
-    return false;
-  });
+  const waitingTasks = allPending.filter(task => isWaiting(task, now.getTime()));
+  const followUpsDue = waitingTasks.filter(task => task.follow_up && parseTaskwarriorDate(task.follow_up) <= now);
 
   const overdueTasks = allPending.filter(task => {
     if (!task.due) return false;
@@ -33,12 +27,12 @@ export async function handleWeeklyReview(): Promise<EnrichedResponse> {
 
   const projects = new Set<string>();
   for (const task of allPending) {
-    if (task.project) projects.add(task.project);
+    if (task.project && !task.tags?.some(tag => ["inbox", "someday", "reference"].includes(tag))) projects.add(task.project);
   }
 
   const projectsWithoutNextActions: string[] = [];
   for (const project of projects) {
-    const projectTasks = allPending.filter(t => t.project === project);
+    const projectTasks = allPending.filter(t => t.project === project || t.project?.startsWith(`${project}.`));
     const nextActions = projectTasks.filter(task => isActionable(task, now.getTime(), false, statuses));
     if (nextActions.length === 0) {
       projectsWithoutNextActions.push(project);
@@ -99,6 +93,7 @@ export async function handleWeeklyReview(): Promise<EnrichedResponse> {
   const summary = `Weekly Review: ${completedThisWeek.length} completed, ${inboxTasks.length} inbox, ${overdueTasks.length} overdue, ${projects.size} active projects, ${recurringTasks.length} habits (${avgHabitCompletion}% avg)`;
 
   const recommendations: string[] = [];
+  if (followUpsDue.length) recommendations.push(`Follow up on ${followUpsDue.length} delegated tasks`);
   if (inboxTasks.length > 0) {
     recommendations.push(`📥 Process ${inboxTasks.length} inbox items`);
   }
@@ -133,6 +128,7 @@ export async function handleWeeklyReview(): Promise<EnrichedResponse> {
     completed_this_week: completedThisWeek,
     overdue: overdueTasks,
     waiting: waitingTasks,
+    follow_ups_due: followUpsDue,
     projects_without_next_actions: projectsWithoutNextActions,
     stalled_projects: stalledProjects,
     habits: recurringTasks,

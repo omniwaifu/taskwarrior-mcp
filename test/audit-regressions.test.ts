@@ -1,3 +1,4 @@
+import { paginate } from "../src/utils/pagination.ts";
 import { describe, expect, test } from "bun:test";
 import { randomUUID } from "node:crypto";
 import { parseTaskwarriorExport, executeTaskWarriorCommandRaw } from "../src/utils/taskwarrior.ts";
@@ -52,7 +53,7 @@ test("application failures propagate to MCP and queued requests recover after er
   const order: string[] = [];
   const first = runTool(async () => { await new Promise(resolve => setTimeout(resolve, 10)); order.push("first"); throw new Error("failed"); });
   const second = runTool(async () => { order.push("second"); return { status: "success" }; });
-  await expect(first).rejects.toThrow("failed");
+  expect((await first).structuredContent).toMatchObject({ status: "error", error: { message: "failed" } });
   expect((await second).isError).toBeUndefined();
   expect(order).toEqual(["first", "second"]);
 });
@@ -70,4 +71,13 @@ test("a slow subprocess times out while the event loop remains responsive", asyn
     if (previous === undefined) delete process.env.TASK_BIN;
     else process.env.TASK_BIN = previous;
   }
+});
+
+
+test("pagination rejects same-second edits but tolerates changing urgency when order is unchanged", () => {
+  const tasks = [task({ modified: "20260101T000000Z", urgency: 2 }), task({ urgency: 1 })];
+  const cursor = paginate(tasks, { limit: 1 }, {}).page.next_cursor;
+  expect(paginate([{ ...tasks[0], urgency: 3 }, tasks[1]], { cursor }, {}).items).toEqual([tasks[1]]);
+  expect(() => paginate([{ ...tasks[0], description: "edited" }, tasks[1]], { cursor }, {})).toThrow("changed");
+  expect(() => paginate(tasks, { cursor: "invalid" }, {})).toThrow("Invalid cursor");
 });

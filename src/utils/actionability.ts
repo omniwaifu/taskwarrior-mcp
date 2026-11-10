@@ -2,18 +2,19 @@ import { parseTaskwarriorDate } from "./dates.js";
 
 interface ActionableTask {
   status?: string;
+  waiting_for?: string;
   wait?: string;
   scheduled?: string;
   depends?: string[];
   tags?: string[];
 }
 export function isWaiting(task: ActionableTask, now = Date.now()): boolean {
-  return task.status === "waiting" || (!!task.wait && parseTaskwarriorDate(task.wait).getTime() > now);
+  return !!task.waiting_for || task.status === "waiting" || (!!task.wait && parseTaskwarriorDate(task.wait).getTime() > now);
 }
 export function isActionable(task: ActionableTask, now = Date.now(), includeBlocked = false, statuses?: TaskStatuses): boolean {
   return task.status === "pending" && !isWaiting(task, now)
     && (!task.scheduled || parseTaskwarriorDate(task.scheduled).getTime() <= now)
-    && !task.tags?.some(tag => tag === "someday" || tag === "project_root")
+    && !task.tags?.some(tag => tag === "someday" || tag === "project_root" || tag === "reference" || tag === "inbox")
     && (includeBlocked || !unmetDependencies(task, statuses).length);
 }
 

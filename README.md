@@ -1,6 +1,6 @@
 # TaskWarrior MCP Server
 
-MCP server that wraps TaskWarrior command-line tool. Provides 22 tools for task management, GTD workflow, and habit tracking.
+MCP server that wraps TaskWarrior command-line tool. Provides 27 tools for task management, GTD workflow, and habit tracking.
 
 ## Tools
 
@@ -9,6 +9,8 @@ MCP server that wraps TaskWarrior command-line tool. Provides 22 tools for task 
 - `modify_task` - Update task attributes
 - `mark_task_done` - Complete task by UUID
 - `delete_task` - Delete task by UUID
+- `query_tasks` - Filter and sort tasks with cursor pagination
+- `get_server_status` - Check runtime, executable, and configuration
 - `list_tasks` - Query tasks with filters (status, project, tags, dates)
 - `get_task_details` - Get single task by UUID
 - `start_task` - Start timer on task
@@ -22,7 +24,10 @@ MCP server that wraps TaskWarrior command-line tool. Provides 22 tools for task 
 
 ### GTD Workflow
 - `get_next_actions` - Filter actionable tasks by context, energy level, time available
-- `process_inbox` - Get tasks tagged +inbox for processing
+- `quick_capture` - Capture a thought in the inbox
+- `process_inbox` - Page through tasks tagged +inbox for processing
+- `process_inbox_item` - Clarify an item as a next action, project, waiting, someday, reference, or deletion
+- `get_task_tree` - Navigate project hierarchy with depth and node limits
 - `get_waiting_for` - Get delegated/waiting tasks, grouped by blocker/date/project
 - `get_blocked_tasks` - Get tasks with unmet dependencies
 - `get_project_status` - Project metrics: next actions, completion %, staleness
@@ -47,7 +52,15 @@ MCP server that wraps TaskWarrior command-line tool. Provides 22 tools for task 
 ```bash
 bun install --frozen-lockfile --ignore-scripts
 bun run build
+bun run doctor
 ```
+
+`doctor` (also `node dist/index.js --doctor`) checks Node, the Taskwarrior executable,
+and configuration readability. It exits with code 1 on failure and gives setup guidance.
+It does not export task records, test database integrity, or verify write access.
+Install Taskwarrior separately and finish its first-run setup in a terminal.
+Use `TASK_BIN` for a custom executable and `TASKRC` for a custom configuration;
+set them in your MCP client’s `env` when needed. `--help` lists CLI options.
 
 ## Run
 
@@ -86,18 +99,23 @@ The bundle packages the MCP server, but it does not bundle TaskWarrior itself. U
 
 ## Response Format
 
-All tools return MCP standard format:
+All registered tools advertise an output schema and return `structuredContent`:
 
 ```json
 {
-  "content": [
-    {
-      "type": "text",
-      "text": "{\"tasks\": [...], \"metadata\": {...}, \"insights\": {...}}"
-    }
-  ]
+  "structuredContent": {
+    "status": "success",
+    "data": { "tasks": [], "page": { "total": 0, "returned": 0, "has_more": false } }
+  },
+  "content": [{ "type": "text", "text": "{\"tasks\":[],\"page\":{\"total\":0,\"returned\":0,\"has_more\":false}}" }]
 }
 ```
+
+`data` contains the tool's task, array, or report. Legacy text payloads remain available;
+legacy mutation envelopes are unwrapped in structured `data`. Execution failures set
+MCP `isError:true`, `status:"error"`, and `error:{code,message}`. Partial operations
+retain their progress in `data`; inspect it before retrying. Invalid MCP inputs are
+reported by the SDK before execution.
 
 GTD tools return enriched responses with:
 - `tasks` - Array of task objects
@@ -108,7 +126,56 @@ GTD tools return enriched responses with:
 
 ## GTD Features
 
+### Capture, clarify, and act
+
+1. Call `quick_capture` with `{"description":"Think about proposal"}`.
+2. Use its returned UUID in `process_inbox_item`:
+   `{"uuid":"<UUID>","action":"next_action","description":"Draft proposal outline","context":"@work","estimated_minutes":15}`.
+3. Call `get_next_actions` with `{"context":"@work","max_minutes":15}`.
+
+Clarification preserves unrelated tags and removes `inbox` and incompatible workflow
+tags. `project` requires a project name and turns the existing item into a project root;
+`create_project_tree` creates a new root with children and dependencies. `someday` and
+`reference` remain stored but are excluded from next actions. `delete` marks the item
+deleted. An optional `note` adds an annotation after classification; a failure reports
+that classification already succeeded.
+
+Delegate with `process_inbox_item` using
+`{"uuid":"<UUID>","action":"waiting","waiting_for":"Alex","follow_up":"tomorrow"}`.
+`waiting_for` records the person or external factor; `follow_up` is the reminder date.
+Passing that date never makes the task actionable automatically. `get_waiting_for`
+supports recipient/project filters and `follow_up_due:true`; `weekly_review` includes
+`groups.follow_ups_due`. Clarify as `next_action` to clear delegation, or explicitly
+clear `waiting_for` and `follow_up` with `modify_task`. Native `wait` still means defer
+until a date and is separate from delegation.
+
+### Queries and project navigation
+
+`query_tasks` accepts status, project, tags, dates, context, priority, waiting_for,
+parent, active, and blocked filters. Project filters include subprojects. Sort by
+urgency (default descending), configured priority (default highest first), due, entry,
+modified, description, or project. `sort_order` can be `asc` or `desc`; missing values
+come last and UUID breaks ties. `list_tasks` retains its raw-array interface.
+
+`query_tasks`, `process_inbox`, and `get_next_actions` return `page` with `total`,
+`returned`, `has_more`, and optional `next_cursor`. The default page size is 50, with
+`limit` from 1 to 200. Repeat the same filters with `cursor: next_cursor` for the next
+page. Changed results or filters invalidate the cursor: restart without it. These
+queries bound returned records but still read matching data to calculate totals;
+they are not database snapshots. Groupings and insights describe the returned page
+unless noted otherwise; inbox processing insights cover the whole inbox.
+
+Call `get_task_tree` with `{"project":"Launch"}` or `{"uuid":"<ROOT_UUID>"}`.
+Nodes contain the task, depth, child UUIDs, and unresolved dependency UUIDs. Counts
+apply to returned nodes, including completed/deleted history. Default limits are
+`depth:10` and `max_nodes:200` (maximum 100 and 500). If `metadata.truncated` is true,
+continue from a child UUID. Cycles and missing/out-of-scope parents produce warnings.
+Project hierarchy uses `mcp_parent`, independently of recurrence.
+
 ### Task Fields
+- `estimated_minutes` - Explicit integer duration estimate, from 0 to 525600 minutes
+- `waiting_for` - Delegation recipient or external factor
+- `follow_up` - Date to review a delegated task
 - `scheduled` - Date to start work
 - `wait` - Hide until date (deferred)
 - `until` - Task expires after date
@@ -117,7 +184,7 @@ GTD tools return enriched responses with:
 - `depends` - Array of task UUIDs this depends on
 - `parent` (write requests) - Project parent UUID, stored as the `mcp_parent` user-defined attribute. Taskwarrior’s exported `parent` field is reserved for recurrence templates.
 - `recur` - Recurrence pattern (daily, weekly, monthly, etc.)
-- `tags` - Letters, digits, `_` and `-`. Tag writes use Taskwarrior's `tags:` attribute and tag
+- `tags` - Unicode letters, combining marks, digits, `_` and `-`. Tag writes use Taskwarrior's `tags:` attribute and tag
   filters use `tags.has:`, because the `+tag` shorthand rejects hyphens and silently rewrites the
   description instead.
 
@@ -143,7 +210,8 @@ includes completed templates; ordinary completed instances remain statistics, no
 
 ## Configuration and write behavior
 
-`context`, `energy`, and `mcp_parent` are string user-defined attributes (UDAs).
+`context`, `energy`, `waiting_for`, and `mcp_parent` are string user-defined attributes
+(UDAs); `estimated_minutes` is numeric and `follow_up` is a date.
 The server supplies their type definitions as command-local overrides, so fresh
 Taskwarrior installations store them correctly without changing your taskrc.
 Other UDA settings, including configured allowed values, still apply. Energy filters
@@ -154,10 +222,15 @@ UDA definitions to your taskrc and configure the report columns:
 uda.context.type=string
 uda.energy.type=string
 uda.mcp_parent.type=string
+uda.estimated_minutes.type=numeric
+uda.waiting_for.type=string
+uda.follow_up.type=date
 ```
 
 Use an empty string in `modify_task` or `batch_modify_tasks` to clear dates,
-context, energy, or project. Omitted fields remain unchanged. Taskwarrior validates
+context, energy, project, priority, parent, waiting_for, or follow_up. Use
+`estimated_minutes:null` to clear the estimate. Batch edits accept the same fields as
+individual edits, including dependency changes and parent. Omitted fields remain unchanged. Taskwarrior validates
 field combinations; a failed dependency replacement does not apply the other
 modifications in that same command.
 
@@ -179,13 +252,17 @@ The stdio transport caps buffered input at 1 MiB; validation also caps combined
 input elements at 25,000 and the server queues at most 100 tool calls. Task contents
 and full command arguments are not routinely logged. Export validation returns an
 error for malformed records rather than silently omitting tasks. Existing Unicode
-projects/tags and custom priority values are preserved in exports; write schemas
-retain their documented restrictions.
+projects/tags and custom priority values are preserved in exports. Writes accept
+Unicode letters/digits/combining marks in projects and tags; project names additionally
+allow spaces and dots. Custom priority identifiers are passed to Taskwarrior for
+validation against its configured values.
 
 Next-action and project/weekly-review counts exclude future scheduled/waiting tasks,
-someday items, project roots, and unresolved dependencies. Completed/deleted
-dependencies do not block tasks. Time filtering uses an explicit numeric `complexity`
-value in minutes when present; urgency is not treated as a duration estimate.
+inbox/reference/someday items, project roots, delegated tasks, and unresolved dependencies. Completed/deleted
+dependencies do not block tasks. Time filtering uses `estimated_minutes`, falling back to legacy numeric `complexity`
+values in minutes. `max_minutes` takes precedence over `time_available`. Unknown
+estimates are excluded when a time filter is set unless `include_unestimated:true`.
+Urgency is not treated as a duration estimate.
 
 ## Development
 

@@ -1,4 +1,5 @@
-import type { CreateProjectTreeRequest } from "../../types/task.js";
+import { isActionable, taskStatuses } from "../../utils/actionability.js";
+import type { CreateProjectTreeRequest, TaskWarriorTask } from "../../types/task.js";
 import { setTaskDependencies } from "../../utils/taskwarrior.js";
 import { handleAddTask } from "../addTask/handler.js";
 import type { EnrichedResponse } from "../../utils/mcpResponseFormat.js";
@@ -21,22 +22,26 @@ function validateGraph(tasks: CreateProjectTreeRequest["tasks"]): void {
 export async function handleCreateProjectTree(args: CreateProjectTreeRequest): Promise<EnrichedResponse & { status: "success" | "error"; project_uuid?: string }> {
   validateGraph(args.tasks);
   let projectUuid: string | undefined;
+  const createdTasks: TaskWarriorTask[] = [];
   const created: { uuid: string; description: string; index: number }[] = [];
   try {
     const root = await handleAddTask({ description: args.project_description, project: args.project_name, tags: ["project_root"] });
     projectUuid = root.uuid;
     for (const [index, task] of args.tasks.entries()) {
       const added = await handleAddTask({ ...task, project: args.project_name, parent: root.uuid });
+      createdTasks.push(added);
       created.push({ uuid: added.uuid, description: added.description, index });
     }
     for (const [index, task] of args.tasks.entries()) {
       if (task.depends_on_indices?.length) {
-        await setTaskDependencies(created[index].uuid, task.depends_on_indices.map(i => created[i].uuid));
+        const dependencies = task.depends_on_indices.map(i => created[i].uuid);
+        await setTaskDependencies(created[index].uuid, dependencies);
+        createdTasks[index].depends = dependencies;
       }
     }
     return {
       status: "success", project_uuid: projectUuid, tasks: created,
-      metadata: { total: created.length + 1, actionable: args.tasks.filter(task => !task.depends_on_indices?.length).length },
+      metadata: { total: created.length + 1, actionable: createdTasks.filter(task => isActionable(task, Date.now(), false, taskStatuses(createdTasks))).length },
       insights: { summary: `Created project "${args.project_name}" with ${created.length} tasks` },
     };
   } catch (error) {

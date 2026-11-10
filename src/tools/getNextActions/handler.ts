@@ -1,5 +1,5 @@
-import { isActionable, taskStatuses, unmetDependencies } from "../../utils/actionability.js";
-import { parseTaskwarriorDate } from "../../utils/dates.js";
+import { paginate } from "../../utils/pagination.js";
+import { isActionable, isWaiting, matchesProject, taskStatuses, unmetDependencies } from "../../utils/actionability.js";
 import type { GetNextActionsRequest } from "../../types/task.js";
 import { executeTaskWarriorCommandJson } from "../../utils/taskwarrior.js";
 import { generateInsights, type EnrichedResponse } from "../../utils/mcpResponseFormat.js";
@@ -21,54 +21,43 @@ export async function handleGetNextActions(
   const statuses = taskStatuses(database);
   const energy = args.energy_level && { high: "H", medium: "M", low: "L" }[args.energy_level];
   const allTasks = database.filter(task => (task.status === "pending" || task.status === "waiting")
-    && (!args.context || task.context === args.context) && (!energy || task.energy === energy));
+    && (!args.project || matchesProject(task, args.project)) && (!args.context || task.context === args.context) && (!energy || task.energy === energy));
 
   // Filter out waiting tasks (wait date in future)
   const now = new Date();
   let actionableTasks = allTasks.filter(task => isActionable(task, now.getTime(), args.include_blocked, statuses));
 
   // Filter only explicit numeric minute estimates; urgency is not a duration.
-  if (args.time_available) {
-    const timeMinutes = {
+  if (args.max_minutes !== undefined || args.time_available) {
+    const timeMinutes = args.max_minutes ?? {
       "5min": 5,
       "15min": 15,
       "30min": 30,
       "1hour": 60,
       "2hours+": Infinity
-    }[args.time_available];
+    }[args.time_available!];
 
     actionableTasks = actionableTasks.filter(task => {
-      // Use complexity if available
-      if (task.complexity) {
-        const complexity = typeof task.complexity === 'number'
-          ? task.complexity
-          : Number(task.complexity);
-        if (Number.isFinite(complexity) && complexity >= 0) {
-          return complexity <= timeMinutes;
-        }
+      const estimate = task.estimated_minutes ?? task.complexity;
+      if (estimate !== undefined && estimate !== "") {
+        const minutes = Number(estimate);
+        if (Number.isFinite(minutes) && minutes >= 0) return minutes <= timeMinutes;
       }
-      return true; // Include if no usable minute estimate
+      return args.include_unestimated === true;
+
     });
   }
 
   // Sort by urgency (descending)
-  actionableTasks.sort((a, b) => (b.urgency || 0) - (a.urgency || 0));
+  actionableTasks.sort((a, b) => (b.urgency || 0) - (a.urgency || 0) || a.uuid.localeCompare(b.uuid));
 
-  // Apply limit if specified
-  if (args.limit) {
-    actionableTasks = actionableTasks.slice(0, args.limit);
-  }
+  const allActionableCount = actionableTasks.length;
+  const page = paginate(actionableTasks, args, { ...args, tool: "get_next_actions" });
+  actionableTasks = page.items;
 
   // Calculate metadata
   const blocked = allTasks.filter(t => unmetDependencies(t, statuses).length > 0).length;
-  const waiting = allTasks.filter(t => {
-    if (t.status === 'waiting') return true;
-    if (t.wait) {
-      const waitDate = parseTaskwarriorDate(t.wait);
-      return waitDate > now;
-    }
-    return false;
-  }).length;
+  const waiting = allTasks.filter(task => isWaiting(task, now.getTime())).length;
 
   // Generate insights
   const insights = generateInsights(actionableTasks, {
@@ -114,9 +103,10 @@ export async function handleGetNextActions(
 
   const response: EnrichedResponse = {
     tasks: actionableTasks,
+    page: page.page,
     metadata: {
       total: allTasks.length,
-      actionable: actionableTasks.length,
+      actionable: allActionableCount,
       blocked,
       waiting,
     },

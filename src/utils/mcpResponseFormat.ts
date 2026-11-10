@@ -1,3 +1,4 @@
+import type { PageInfo } from "./pagination.js";
 import { isActionable, isWaiting, unmetDependencies, type TaskStatuses } from "./actionability.js";
 import { parseTaskwarriorDate } from "./dates.js";
 
@@ -43,6 +44,7 @@ export function createMcpErrorResponse(errorMessage: string) {
  * Enriched response structure for LLM-optimized queries
  */
 export interface EnrichedResponse {
+  page?: PageInfo;
   tasks: unknown[];
   metadata: {
     total: number;
